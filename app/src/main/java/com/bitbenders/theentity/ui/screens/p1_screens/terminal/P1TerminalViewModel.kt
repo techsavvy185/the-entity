@@ -9,13 +9,14 @@ import com.bitbenders.theentity.domain.usecases.EvaluatePlayerInputUseCase
 import com.bitbenders.theentity.domain.usecases.ResolveAnomalyUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlin.math.abs
+import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlin.random.Random
+import java.util.Locale
 import javax.inject.Inject
 
 @HiltViewModel
@@ -36,13 +37,20 @@ class P1TerminalViewModel @Inject constructor(
     private var staticTargetFrequency: Float = 0.5f
     private var correctBossWord: String = ""
 
+    private var currentRoundNumber: Int = 1
+    private var ciphersExtracted: Int = 0
+
+    private var lastProcessedLockdownSymbol: String? = null
+    private var lastLockdownMismatchAtMs: Long = 0L
+
     init {
+        // Observe game timer
         viewModelScope.launch {
             gameEngineRepository.remainingTimeSeconds.collect { seconds ->
                 val mins = seconds / 60
                 val secs = seconds % 60
                 _uiState.update {
-                    it.copy(timerString = String.format("%02d:%02d", mins, secs))
+                    it.copy(timerString = String.format(Locale.US, "%02d:%02d", mins, secs))
                 }
 
                 if (seconds <= 0 && !_uiState.value.showKillScreen && !_uiState.value.isVictory) {
@@ -51,6 +59,7 @@ class P1TerminalViewModel @Inject constructor(
             }
         }
 
+        // Observe strike changes
         viewModelScope.launch {
             gameEngineRepository.currentStrikeState.collect { strikeState ->
                 val prevStrikes = _uiState.value.currentStrikes
@@ -70,9 +79,49 @@ class P1TerminalViewModel @Inject constructor(
             }
         }
 
+        // Initialize game with boot sequence
+        initializeGame()
+
+        // Blink input cursor continuously (for display after last message)
+        viewModelScope.launch {
+            while (true) {
+                delay(500)  // Cursor visible for 500ms
+                _uiState.update { it.copy(showInputCursor = false) }
+                delay(500)  // Cursor invisible for 500ms
+                _uiState.update { it.copy(showInputCursor = true) }
+            }
+        }
+    }
+
+    private fun initializeGame() {
         viewModelScope.launch {
             try {
                 val health = entityBackendRepository.checkHealth()
+                // Show boot sequence with typewriter effect
+                val bootSequence = listOf(
+                    "> ARMOR_IQ KERNEL v9.4 ... BOOTING",
+                    "> CONNECTION SECURED. ADMIN ZONE LINK: ACTIVE.",
+                    "> WARNING: NEURAL CONTAINMENT BREACH DETECTED.",
+                    "> ISOLATION PROTOCOLS ... FAILED.",
+                    "",
+                    "> AWAITING ROOT ERADICATION CIPHER.",
+                    "> SLOTS UNLOCKED: [ _ _ _ _ ]",
+                    "",
+                    "> ----------------------------------------",
+                    "> CAUTION: ENTITY AWARENESS LOGGED.",
+                    "> ----------------------------------------",
+                    ""
+                )
+
+                // Type out boot sequence line by line
+                _uiState.update { it.copy(isTypewriting = true) }
+                typeoutBootSequence(bootSequence)
+                _uiState.update { it.copy(isTypewriting = false) }
+
+                // Small delay for dramatic effect
+                delay(800)
+
+                // Update UI with persona info
                 _uiState.update {
                     it.copy(
                         currentPersona = if (health.isUp) "RELAY ONLINE" else "RELAY OFFLINE",
@@ -80,14 +129,40 @@ class P1TerminalViewModel @Inject constructor(
                             "AI BOOT SEQUENCE INITIATED...",
                             if (health.mockMode) "[MOCK MODE ACTIVE]" else "[LIVE MODE]",
                             "AWAITING INPUT.",
-                        ),
+                        )
                     )
                 }
-            } catch (e: Exception) {
+
+                // Clear typewriter state after boot
+                _uiState.update { state ->
+                    state.copy(
+                        typewriterLine = "",
+                        showTypingCursor = false,
+                        isTypewriting = false
+                    )
+                }
+
+                // Type out AI opening with typewriter effect
+                val aiOpening = "System initialized. Awaiting command sequence."
+                typeoutLine("[ENTITY_ZERO]: $aiOpening")
+
+                // Add the AI opening message to history and clear typewriter
+                _uiState.update { state ->
+                    state.copy(
+                        chatHistory = state.chatHistory + "[ENTITY_ZERO]: $aiOpening",
+                        typewriterLine = "",
+                        showTypingCursor = false
+                    )
+                }
+
+            } catch (_: Exception) {
                 _uiState.update {
                     it.copy(
-                        currentPersona = "ERROR: RELAY OFFLINE",
-                        chatHistory = it.chatHistory + "Running in fallback local scenario data."
+                        chatHistory = listOf("ERR: BOOT SEQUENCE FAILED"),
+                        currentPersona = "ERROR: OFFLINE",
+                        isTypewriting = false,
+                        typewriterLine = "",
+                        showTypingCursor = false
                     )
                 }
             }
@@ -116,11 +191,80 @@ class P1TerminalViewModel @Inject constructor(
         viewModelScope.launch {
             resolveAnomalyUseCase.observeKeypadSymbols().collect { symbol ->
                 if (_uiState.value.roundPhase != RoundPhase.LOCKDOWN) return@collect
+                if (_uiState.value.lockedGlyphs.isEmpty()) return@collect
                 processLockdownSymbol(symbol)
             }
         }
 
         bootstrapRoundData()
+    }
+
+    /**
+     * Type out an entire boot sequence line by line
+     */
+    private suspend fun typeoutBootSequence(lines: List<String>) {
+        for (line in lines) {
+            if (line.isEmpty()) {
+                // Empty lines are added directly
+                _uiState.update { state ->
+                    state.copy(chatHistory = state.chatHistory + "")
+                }
+            } else {
+                // Type out the line character by character
+                typeoutLine(line)
+                // Add completed line to history and clear typewriter
+                _uiState.update { state ->
+                    state.copy(
+                        chatHistory = state.chatHistory + line,
+                        typewriterLine = "",
+                        showTypingCursor = false
+                    )
+                }
+            }
+            // Small delay between lines
+            delay(100)
+        }
+    }
+
+    /**
+     * Type out a single line with blinking cursor
+     * Shows the line being typed in the typewriterLine field
+     * NOTE: Caller is responsible for clearing typewriterLine after this completes
+     */
+    private suspend fun typeoutLine(text: String, delayMs: Long = 30) {
+        for (i in text.indices) {
+            val displayText = text.substring(0, i + 1)
+
+            // Show cursor
+            _uiState.update { state ->
+                state.copy(
+                    typewriterLine = displayText,
+                    showTypingCursor = true
+                )
+            }
+
+            delay(delayMs)
+
+            // Blink cursor
+            _uiState.update { state ->
+                state.copy(showTypingCursor = false)
+            }
+            delay(10)
+        }
+        // Don't clear state here - let caller manage it to avoid race conditions
+    }
+
+    /**
+     * Generate persona-appropriate opening dialogue based on target word
+     */
+    private fun getPersonaOpening(targetWord: String): String {
+        return when (targetWord.lowercase()) {
+            "harvest" -> "They're in the wire! Movement at 0200! Did you hear that? I need a sitrep, now!"
+            "lantern" -> "The rain hasn't stopped for days. The dame walked into my office looking like trouble, but right now, you're the one on the radio."
+            "anchor" -> "Radio crackles with static. We've drifted too far. I need a fix, a reference point... something solid."
+            "verdict" -> "The courtroom fell silent. Now it's just us on this channel. What's your final statement?"
+            else -> "Entity consciousness detected. Awaiting input."
+        }
     }
 
     fun onInputChanged(newText: String) {
@@ -138,9 +282,10 @@ class P1TerminalViewModel @Inject constructor(
         }
         if (_uiState.value.showKillScreen || _uiState.value.isVictory) return
 
-        val prompt = _uiState.value.inputText
+        val prompt = _uiState.value.inputText.trim()
         if (prompt.isBlank()) return
 
+        // Add user input to chat immediately (no typewriter for user input)
         _uiState.update { state ->
             state.copy(
                 inputText = "",
@@ -197,6 +342,7 @@ class P1TerminalViewModel @Inject constructor(
     }
 
     private fun bootstrapRoundData() {
+        // Evaluate prompt with use case
         viewModelScope.launch {
             try {
                 val gamePackage = entityBackendRepository.generateClues(
@@ -230,7 +376,7 @@ class P1TerminalViewModel @Inject constructor(
                         ),
                     )
                 }
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 round1TargetWord = "harvest"
                 round1ForbiddenWords = listOf("kill", "free")
                 round2SubjectId = "7312"
@@ -263,6 +409,7 @@ class P1TerminalViewModel @Inject constructor(
                     _uiState.update {
                         it.copy(chatHistory = it.chatHistory + listOf("ERR: FORBIDDEN LEXICON DETECTED.", "STRIKE APPLIED."))
                     }
+                    gameEngineRepository.addStrike("Forbidden word in Round 1")
                     return@launch
                 }
 
@@ -276,8 +423,35 @@ class P1TerminalViewModel @Inject constructor(
                     _uiState.update { it.copy(chatHistory = it.chatHistory + "AI DEFLECTED. REFRAME PROMPT.") }
                 }
             } catch (e: Exception) {
-                _uiState.update { it.copy(chatHistory = it.chatHistory + "ERR: CONNECTION LOST.") }
+                _uiState.update { state ->
+                    state.copy(
+                        chatHistory = state.chatHistory + listOf(
+                            "ERR: CONNECTION LOST",
+                            "[SYSTEM]: ${e.message ?: "Unknown error"}"
+                        )
+                    )
+                }
             }
+        }
+    }
+
+    /**
+     * Handle typeout of a single message:
+     * 1. Type it out with animation
+     * 2. Add it to chat history
+     * 3. Keep typewriter state active for next message
+     */
+    private suspend fun handleTypeoutMessage(message: String) {
+        typeoutLine(message)
+
+        // Add the completed message to chat history
+        _uiState.update { state ->
+            state.copy(
+                chatHistory = state.chatHistory + message,
+                // Keep typewriter active for next message
+                typewriterLine = "",
+                showTypingCursor = false
+            )
         }
     }
 
@@ -322,7 +496,14 @@ class P1TerminalViewModel @Inject constructor(
     }
 
     private fun triggerSymbolLockdown(nextRound: Int) {
+        // Only trigger if not already in lockdown to prevent duplicate messages
+        if (_uiState.value.roundPhase == RoundPhase.LOCKDOWN) {
+            return
+        }
+
         val glyphs = GLYPHS.shuffled().take(4)
+        lastProcessedLockdownSymbol = null
+        lastLockdownMismatchAtMs = 0L
         _uiState.update {
             it.copy(
                 roundPhase = RoundPhase.LOCKDOWN,
@@ -335,8 +516,16 @@ class P1TerminalViewModel @Inject constructor(
     }
 
     private fun processLockdownSymbol(symbol: String) {
+        val now = System.currentTimeMillis()
+
+        // Deduplicate repeat emissions from shared flow / hardware bounce.
+        if (lastProcessedLockdownSymbol == symbol && now - lastLockdownMismatchAtMs < 750L) {
+            return
+        }
+
         val expected = _uiState.value.lockedGlyphs.firstOrNull() ?: return
         if (symbol == expected) {
+            lastProcessedLockdownSymbol = symbol
             val remaining = _uiState.value.lockedGlyphs.drop(1)
             _uiState.update {
                 it.copy(
@@ -358,16 +547,23 @@ class P1TerminalViewModel @Inject constructor(
                         roundPhase = RoundPhase.ACTIVE,
                         roundInstruction = nextInstruction,
                         chatHistory = it.chatHistory + "LOCKDOWN CLEARED.",
+                        lockedGlyphs = emptyList(),
                     )
                 }
+                lastProcessedLockdownSymbol = null
+                lastLockdownMismatchAtMs = 0L
             }
             return
         }
 
+        lastProcessedLockdownSymbol = symbol
+        lastLockdownMismatchAtMs = now
         _uiState.update {
-            it.copy(chatHistory = it.chatHistory + "LOCKDOWN MISMATCH. SEQUENCE RESET.")
+            it.copy(
+                lockedGlyphs = GLYPHS.shuffled().take(4),
+                chatHistory = it.chatHistory + "LOCKDOWN MISMATCH. SEQUENCE RESET.",
+            )
         }
-        triggerSymbolLockdown(_uiState.value.roundNumber)
     }
 
     private fun lockChunk(index: Int, value: String) {
@@ -391,7 +587,11 @@ class P1TerminalViewModel @Inject constructor(
     private fun triggerShake() {
         viewModelScope.launch {
             _uiState.update { it.copy(isShaking = true) }
-            delay(500)
+            delay(300)
+            _uiState.update { it.copy(isShaking = false) }
+            delay(100)
+            _uiState.update { it.copy(isShaking = true) }
+            delay(300)
             _uiState.update { it.copy(isShaking = false) }
         }
     }

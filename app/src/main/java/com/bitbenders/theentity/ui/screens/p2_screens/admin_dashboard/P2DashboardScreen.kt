@@ -95,7 +95,7 @@ fun P2DashboardScreen(
                         contentColor = EntityBlack
                     )
                 ) {
-                    Text("CLR")
+                    Text("CLR", style = MaterialTheme.typography.labelLarge)
                 }
             }
 
@@ -108,4 +108,3 @@ fun P2DashboardScreen(
         }
     }
 }
-

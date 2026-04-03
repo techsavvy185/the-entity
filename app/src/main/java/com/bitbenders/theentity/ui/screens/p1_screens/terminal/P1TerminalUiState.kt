@@ -29,12 +29,18 @@ data class P1TerminalUiState(
     val roundPhase: RoundPhase = RoundPhase.BOOT,
     val inputText: String = "",
     val isShaking: Boolean = false,
-    val currentStaticIntensity: Float = 0f,
     val lockedGlyphs: List<String> = emptyList(),
     val bossOptions: List<BossOptionUi> = emptyList(),
     val selectedBossOptionId: Int? = null,
     val calibrationKey: String = "",
     val showKillScreen: Boolean = false,
     val isVictory: Boolean = false,
+    val currentStaticIntensity: Float = 0f,
+    // Typewriter effect fields
+    val typewriterLine: String = "",  // Current line being typed out
+    val showTypingCursor: Boolean = false,  // Blinking cursor visibility
+    val isTypewriting: Boolean = false,  // Whether we're currently in typewriter mode
+    // Input prompt cursor
+    val showInputCursor: Boolean = true  // Blinking cursor for input prompt
 )
 

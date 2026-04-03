@@ -100,7 +100,7 @@ fun LobbyScreen(
                     contentColor = EntityBlack,
                 ),
             ) {
-                Text(text = "CREATE ROOM + ENTER AS P1")
+                Text(text = "CREATE ROOM + ENTER AS P1", style = MaterialTheme.typography.labelLarge)
             }
         }
 
@@ -109,7 +109,7 @@ fun LobbyScreen(
             OutlinedTextField(
                 value = uiState.joinCodeInput,
                 onValueChange = viewModel::onJoinCodeChanged,
-                label = { Text("Enter Room Code") },
+                label = { Text("Enter Room Code", style = MaterialTheme.typography.labelLarge) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                 singleLine = true,
             )
@@ -125,7 +125,7 @@ fun LobbyScreen(
                     contentColor = EntityBlack,
                 ),
             ) {
-                Text(text = "JOIN ROOM AS P2")
+                Text(text = "JOIN ROOM AS P2", style = MaterialTheme.typography.labelLarge)
             }
         }
 
@@ -140,4 +140,3 @@ fun LobbyScreen(
         }
     }
 }
-

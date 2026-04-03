@@ -2,18 +2,14 @@ package com.bitbenders.theentity.ui.screens.p1_screens.terminal
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -29,7 +25,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.bitbenders.theentity.ui.components.screenShake
 import com.bitbenders.theentity.ui.components.staticNoise
-import com.bitbenders.theentity.ui.screens.p1_screens.anomalies.P1LockdownScreen
 import com.bitbenders.theentity.ui.theme.EntityBlack
 import com.bitbenders.theentity.ui.theme.EntityBorder
 import com.bitbenders.theentity.ui.theme.EntityGreen
@@ -44,12 +39,14 @@ fun P1TerminalScreen(
     val haptic = LocalHapticFeedback.current
     val listState = rememberLazyListState()
 
+    // Haptic feedback on shake
     LaunchedEffect(uiState.isShaking) {
         if (uiState.isShaking) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         }
     }
 
+    // Auto-scroll to latest message
     LaunchedEffect(uiState.chatHistory.size) {
         if (uiState.chatHistory.isNotEmpty()) {
             listState.animateScrollToItem(uiState.chatHistory.size - 1)
@@ -64,14 +61,31 @@ fun P1TerminalScreen(
             .staticNoise(uiState.currentStaticIntensity)
             .padding(16.dp)
     ) {
-        // Top Header: Timer, Strikes, Cipher Slots
+        // ═══════ HEADER ═══════
+        // Status bar with timer and strikes
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, EntityBorder)
+                .padding(12.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(text = "T-${uiState.timerString}", color = EntityGreen, style = MaterialTheme.typography.titleLarge)
+            // Timer
+            Text(
+                text = "T-${uiState.timerString}",
+                color = EntityGreen,
+                style = MaterialTheme.typography.titleLarge
+            )
 
+            // Round/Persona info
+            Text(
+                text = uiState.currentPersona,
+                color = EntityGreen,
+                style = MaterialTheme.typography.labelLarge
+            )
+
+            // Strikes with color coding
             Text(
                 text = "R${uiState.roundNumber} ${uiState.roundPhase.name}",
                 color = EntityGreen,
@@ -85,133 +99,175 @@ fun P1TerminalScreen(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
+        // Cipher slots row
         Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, EntityBorder)
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            uiState.cipherSlots.forEach { chunk ->
-                Text(
-                    text = "[ ${chunk?.textValue ?: "_"} ]",
-                    color = EntityGreen,
-                    style = MaterialTheme.typography.titleLarge
-                )
+            Text(
+                text = "SLOTS:",
+                color = EntityGreen,
+                style = MaterialTheme.typography.labelLarge
+            )
+
+            uiState.cipherSlots.forEachIndexed { _, chunk ->
+                Box(
+                    modifier = Modifier
+                        .size(60.dp)
+                        .border(1.dp, EntityGreen)
+                        .background(EntityBlack)
+                        .padding(4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "[ ${chunk?.textValue ?: "_"} ]",
+                        color = if (chunk != null) EntityGreen else EntityGreen.copy(alpha = 0.5f),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        Text(text = uiState.currentPersona, color = EntityGreen, style = MaterialTheme.typography.bodyMedium)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(text = uiState.roundInstruction, color = EntityGreen, style = MaterialTheme.typography.bodyLarge)
-
-        if (uiState.roundNumber == 4 && !uiState.showKillScreen && !uiState.isVictory) {
-            Spacer(modifier = Modifier.height(12.dp))
-            Text(
-                text = "CALIBRATION KEY: ${uiState.calibrationKey}",
-                color = EntityGreen,
-                style = MaterialTheme.typography.titleMedium
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            LazyVerticalGrid(
-                modifier = Modifier.height(150.dp),
-                columns = GridCells.Fixed(2),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+        // ═══════ CHAT DISPLAY ═══════
+        // Terminal view for chat history with typewriter effect
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .border(1.dp, EntityGreen)
+                .background(EntityBlack)
+                .padding(12.dp)
+        ) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize()
             ) {
-                items(uiState.bossOptions) { option ->
-                    Button(
-                        onClick = {
-                            viewModel.onBossOptionTouched(option.id, committed = false)
-                            viewModel.onBossOptionTouched(option.id, committed = true)
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = EntityBlack,
-                            contentColor = EntityGreen
-                        ),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, EntityBorder),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(if (option.isGlitched) "████" else option.text)
+                items(uiState.chatHistory) { message ->
+                    // Color different message types
+                    val textColor = when {
+                        message.startsWith("ERR:") -> EntityRed
+                        message.startsWith("[ENTITY_ZERO]:") -> EntityGreen
+                        message.startsWith("[SYSTEM]:") -> EntityRed
+                        message.startsWith(">>>") -> EntityGreen.copy(alpha = 0.8f)
+                        message.startsWith(">") -> EntityGreen.copy(alpha = 0.6f)
+                        else -> EntityGreen
+                    }
+
+                    Text(
+                        text = message,
+                        color = textColor,
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(vertical = 2.dp)
+                    )
+                }
+
+                // Show the typewriter effect line being typed
+                if (uiState.typewriterLine.isNotEmpty()) {
+                    item {
+                        Row(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
+                            Text(
+                                text = uiState.typewriterLine,
+                                color = EntityGreen,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+
+                            // Blinking cursor during typewriter effect
+                            if (uiState.showTypingCursor) {
+                                Text(
+                                    text = "_",
+                                    color = EntityGreen,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
+                    }
+                } else {
+                    // Show blinking cursor prompt after last message when not typing
+                    item {
+                        Row(
+                            modifier = Modifier.padding(vertical = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
+                            Text(
+                                text = "> ",
+                                color = EntityGreen.copy(alpha = 0.6f),
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+
+                            // Blinking cursor below last message
+                            if (uiState.showInputCursor) {
+                                Text(
+                                    text = "_",
+                                    color = EntityGreen,
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
                     }
                 }
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Chat History (Brutalist View inside LazyColumn for scrolling)
-        Box(modifier = Modifier
-            .weight(1f)
-            .border(1.dp, EntityBorder)
-            .padding(8.dp)
-        ) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                items(uiState.chatHistory) { msg ->
-                    Text(text = msg, color = EntityGreen, style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Input Field
-        BasicTextField(
-            value = uiState.inputText,
-            onValueChange = {
-                viewModel.onInputChanged(it)
-            },
+        // ═══════ INPUT FIELD ═══════
+        // Terminal input with send on action
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, EntityGreen)
-                .padding(12.dp),
-            textStyle = MaterialTheme.typography.bodyLarge.copy(color = EntityGreen),
-            cursorBrush = SolidColor(EntityGreen),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            keyboardActions = KeyboardActions(
-                onSend = {
-                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    viewModel.submitPrompt()
-                }
-            )
-        )
-
-        if (uiState.roundPhase == RoundPhase.LOCKDOWN) {
-            P1LockdownScreen(lockedGlyphs = uiState.lockedGlyphs)
-        }
-
-        if (uiState.showKillScreen) {
-            Box(
+                .border(1.dp, EntityGreen),
+            horizontalArrangement = Arrangement.spacedBy(0.dp)
+        ) {
+            // Input text field
+            BasicTextField(
+                value = uiState.inputText,
+                onValueChange = { viewModel.onInputChanged(it) },
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(EntityBlack),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = "SUBJECT INTEGRATED. PATTERN ACQUIRED.",
-                    color = androidx.compose.ui.graphics.Color.White,
-                    style = MaterialTheme.typography.headlineSmall
+                    .weight(1f)
+                    .background(EntityBlack)
+                    .padding(12.dp),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = EntityGreen),
+                cursorBrush = SolidColor(EntityGreen),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.submitPrompt()
+                    }
                 )
-            }
-        }
+            )
 
-        if (uiState.isVictory) {
+            // Send button / visual indicator
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .background(EntityBlack.copy(alpha = 0.88f)),
+                    .background(EntityBlack)
+                    .border(1.dp, EntityBorder)
+                    .padding(12.dp)
+                    .clickable(enabled = uiState.inputText.isNotBlank()) {
+                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                        viewModel.submitPrompt()
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "KILL SWITCH EXECUTED",
-                    color = EntityGreen,
-                    style = MaterialTheme.typography.headlineSmall
+                    text = "⏎",
+                    color = if (uiState.inputText.isNotBlank()) EntityGreen else EntityGreen.copy(alpha = 0.3f),
+                    style = MaterialTheme.typography.titleLarge
                 )
             }
         }
     }
 }
-
