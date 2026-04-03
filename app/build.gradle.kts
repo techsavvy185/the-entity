@@ -7,7 +7,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.hilttemplate"
+    namespace = "com.bitbenders.theentity"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -15,7 +15,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.hilttemplate"
+        applicationId = "com.bitbenders.theentity"
         minSdk = 24
         targetSdk = 36
         versionCode = 1
