@@ -7,10 +7,10 @@ sealed interface Screen {
     data object LobbyRoute : Screen
 
     @Serializable
-    data object P1TerminalRoute : Screen
+    data class P1TerminalRoute(val roomCode: String) : Screen
 
     @Serializable
-    data object P2DashboardRoute : Screen
+    data class P2DashboardRoute(val roomCode: String) : Screen
 
     @Serializable
     data object KillScreenRoute : Screen

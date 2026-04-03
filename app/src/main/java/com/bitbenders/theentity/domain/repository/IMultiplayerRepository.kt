@@ -7,6 +7,7 @@ interface IMultiplayerRepository {
     val incomingHardwareActions: Flow<P2HardwareAction>
 
     suspend fun sendP1StateToP2(state: P1SyncState)
+    suspend fun sendHardwareAction(action: P2HardwareAction)
 }
 
 data class P1SyncState(

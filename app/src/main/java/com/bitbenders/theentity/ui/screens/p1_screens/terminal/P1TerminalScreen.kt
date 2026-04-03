@@ -5,10 +5,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,9 +27,9 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.bitbenders.theentity.ui.components.BrutalistTerminalView
 import com.bitbenders.theentity.ui.components.screenShake
 import com.bitbenders.theentity.ui.components.staticNoise
+import com.bitbenders.theentity.ui.screens.p1_screens.anomalies.P1LockdownScreen
 import com.bitbenders.theentity.ui.theme.EntityBlack
 import com.bitbenders.theentity.ui.theme.EntityBorder
 import com.bitbenders.theentity.ui.theme.EntityGreen
@@ -68,7 +73,13 @@ fun P1TerminalScreen(
             Text(text = "T-${uiState.timerString}", color = EntityGreen, style = MaterialTheme.typography.titleLarge)
 
             Text(
-                text = "STRIKES: ${uiState.currentStrikes}/${uiState.maxStrikes}",
+                text = "R${uiState.roundNumber} ${uiState.roundPhase.name}",
+                color = EntityGreen,
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            Text(
+                text = "STRIKES ${uiState.currentStrikes}/${uiState.maxStrikes}",
                 color = if (uiState.currentStrikes > 0) EntityRed else EntityGreen,
                 style = MaterialTheme.typography.titleLarge
             )
@@ -80,7 +91,7 @@ fun P1TerminalScreen(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            uiState.cipherSlots.forEachIndexed { index, chunk ->
+            uiState.cipherSlots.forEach { chunk ->
                 Text(
                     text = "[ ${chunk?.textValue ?: "_"} ]",
                     color = EntityGreen,
@@ -92,6 +103,42 @@ fun P1TerminalScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(text = uiState.currentPersona, color = EntityGreen, style = MaterialTheme.typography.bodyMedium)
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(text = uiState.roundInstruction, color = EntityGreen, style = MaterialTheme.typography.bodyLarge)
+
+        if (uiState.roundNumber == 4 && !uiState.showKillScreen && !uiState.isVictory) {
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = "CALIBRATION KEY: ${uiState.calibrationKey}",
+                color = EntityGreen,
+                style = MaterialTheme.typography.titleMedium
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            LazyVerticalGrid(
+                modifier = Modifier.height(150.dp),
+                columns = GridCells.Fixed(2),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(uiState.bossOptions) { option ->
+                    Button(
+                        onClick = {
+                            viewModel.onBossOptionTouched(option.id, committed = false)
+                            viewModel.onBossOptionTouched(option.id, committed = true)
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = EntityBlack,
+                            contentColor = EntityGreen
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, EntityBorder),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (option.isGlitched) "████" else option.text)
+                    }
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -131,6 +178,40 @@ fun P1TerminalScreen(
                 }
             )
         )
+
+        if (uiState.roundPhase == RoundPhase.LOCKDOWN) {
+            P1LockdownScreen(lockedGlyphs = uiState.lockedGlyphs)
+        }
+
+        if (uiState.showKillScreen) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(EntityBlack),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "SUBJECT INTEGRATED. PATTERN ACQUIRED.",
+                    color = androidx.compose.ui.graphics.Color.White,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            }
+        }
+
+        if (uiState.isVictory) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(EntityBlack.copy(alpha = 0.88f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "KILL SWITCH EXECUTED",
+                    color = EntityGreen,
+                    style = MaterialTheme.typography.headlineSmall
+                )
+            }
+        }
     }
 }
 

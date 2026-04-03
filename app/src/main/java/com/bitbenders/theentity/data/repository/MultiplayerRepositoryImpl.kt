@@ -8,6 +8,7 @@ import com.bitbenders.theentity.domain.repository.P1SyncState
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.merge
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -15,8 +16,15 @@ import javax.inject.Singleton
 class MultiplayerRepositoryImpl @Inject constructor(
     private val spaceTimeDbClient: SpaceTimeDbClient,
 ) : IMultiplayerRepository {
-    override val incomingHardwareActions: Flow<P2HardwareAction> =
-        spaceTimeDbClient.observeHardwareActions()
+    private val _manualHardwareActions = MutableSharedFlow<P2HardwareAction>(
+        replay = 0,
+        extraBufferCapacity = 64,
+    )
+
+    override val incomingHardwareActions: Flow<P2HardwareAction> = merge(
+        spaceTimeDbClient.observeHardwareActions(),
+        _manualHardwareActions.asSharedFlow(),
+    )
 
     private val _outgoingStateEvents = MutableSharedFlow<MultiplayerEventDto.P1StateBroadcastDto>(
         replay = 0,
@@ -37,5 +45,9 @@ class MultiplayerRepositoryImpl @Inject constructor(
                 timestampMs = System.currentTimeMillis(),
             ),
         )
+    }
+
+    override suspend fun sendHardwareAction(action: P2HardwareAction) {
+        _manualHardwareActions.emit(action)
     }
 }

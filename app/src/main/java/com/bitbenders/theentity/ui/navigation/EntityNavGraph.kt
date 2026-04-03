@@ -10,7 +10,6 @@ import com.bitbenders.theentity.ui.screens.p2_screens.admin_dashboard.P2Dashboar
 import com.bitbenders.theentity.ui.screens.p2_screens.admin_dashboard.P2DashboardViewModel
 import com.bitbenders.theentity.ui.screens.shared_screens.game_over.KillScreen
 import com.bitbenders.theentity.ui.screens.shared_screens.game_over.KillScreenViewModel
-import kotlinx.serialization.Serializable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.activity.compose.BackHandler
@@ -35,8 +34,8 @@ fun EntityNavGraph() {
                 val viewModel: LobbyViewModel = hiltViewModel()
                 LobbyScreen(
                     viewModel = viewModel,
-                    onJoinAsTrapped = { backstack.add(Screen.P1TerminalRoute) },
-                    onJoinAsOperator = { backstack.add(Screen.P2DashboardRoute) }
+                    onJoinAsTrapped = { roomCode -> backstack.add(Screen.P1TerminalRoute(roomCode)) },
+                    onJoinAsOperator = { roomCode -> backstack.add(Screen.P2DashboardRoute(roomCode)) }
                 )
             }
 

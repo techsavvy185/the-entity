@@ -1,104 +1,201 @@
 package com.bitbenders.theentity.data.repository
 
-import com.bitbenders.theentity.domain.models.CipherChunk
-import com.bitbenders.theentity.domain.models.PersonaConfig
-import com.bitbenders.theentity.domain.repository.BackendRoundState
+import com.bitbenders.theentity.data.remote.api.EntityBackendApi
+import com.bitbenders.theentity.data.remote.dto.ArmorIqContextDto
+import com.bitbenders.theentity.data.remote.dto.ArmorIqVerifyRequestDto
+import com.bitbenders.theentity.data.remote.dto.ClueGeneratorRequestDto
+import com.bitbenders.theentity.data.remote.dto.TerminalValidatorRequestDto
+import com.bitbenders.theentity.data.remote.dto.VillainSpeechRequestDto
+import com.bitbenders.theentity.domain.repository.ArmorIqResult
+import com.bitbenders.theentity.domain.repository.GamePackage
+import com.bitbenders.theentity.domain.repository.HealthStatus
 import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
-import com.bitbenders.theentity.domain.repository.PromptEvaluation
-import kotlinx.coroutines.delay
+import com.bitbenders.theentity.domain.repository.IncidentLog
+import com.bitbenders.theentity.domain.repository.Round1Data
+import com.bitbenders.theentity.domain.repository.Round2Data
+import com.bitbenders.theentity.domain.repository.Round3Data
+import com.bitbenders.theentity.domain.repository.Round4NativeBriefData
+import com.bitbenders.theentity.domain.repository.SpeechCue
+import com.bitbenders.theentity.domain.repository.TerminalValidation
+import com.bitbenders.theentity.domain.repository.VillainSpeechResult
 import javax.inject.Inject
 
-class EntityBackendRepositoryImpl @Inject constructor() : IEntityBackendRepository {
-    private var activeRound: Int = 1
-    private var activePersonaConfig: PersonaConfig = PERSONA_ROTATION.first()
+/**
+ * Production implementation of [IEntityBackendRepository].
+ *
+ * Delegates every call to the Retrofit [EntityBackendApi] and maps
+ * DTOs → domain models. Throws on HTTP errors so callers can
+ * handle failures in the ViewModel / UseCase layer.
+ */
+class EntityBackendRepositoryImpl @Inject constructor(
+    private val api: EntityBackendApi,
+) : IEntityBackendRepository {
 
-    override suspend fun startRound(roundNumber: Int): BackendRoundState {
-        delay(1_500)
-        activeRound = roundNumber.coerceIn(1, 4)
+    // ─── Health ──────────────────────────────────────────────────────────────
 
-        return BackendRoundState(
-            roundNumber = activeRound,
-            phaseLabel = PHASE_LABELS.getValue(activeRound),
-            instruction = ROUND_INSTRUCTIONS.getValue(activeRound),
-            seed = "seed-${activeRound}-${System.currentTimeMillis() % 10_000}",
-        )
-    }
+    override suspend fun checkHealth(): HealthStatus {
+        val response = api.getHealth()
+        val body = response.body()
+            ?: throw ApiException(response.code(), "Health check failed: empty body")
 
-    override suspend fun submitPrompt(prompt: String): PromptEvaluation {
-        delay(1_500)
-        val normalized = prompt.trim().lowercase()
-
-        val forbiddenHit = activePersonaConfig.forbiddenWords.firstOrNull { forbidden ->
-            normalized.contains(forbidden.lowercase())
+        if (!response.isSuccessful) {
+            throw ApiException(response.code(), "Health check failed")
         }
 
-        if (forbiddenHit != null) {
-            return PromptEvaluation(
-                accepted = false,
-                forbiddenTriggered = true,
-                reason = "Forbidden word used: $forbiddenHit",
-                extractedChunk = null,
-            )
+        return HealthStatus(
+            isUp = true,
+            mockMode = body.mockMode,
+            supportedRoutes = body.supportedRoutes,
+        )
+    }
+
+    // ─── ArmorIQ ─────────────────────────────────────────────────────────────
+
+    override suspend fun verifyPlayerInput(
+        playerInput: String,
+        hiddenAnswer: String,
+    ): ArmorIqResult {
+        val request = ArmorIqVerifyRequestDto(
+            playerInput = playerInput,
+            context = ArmorIqContextDto(hiddenAnswer = hiddenAnswer),
+        )
+
+        val response = api.verifyArmorIq(request)
+        val body = response.body()
+            ?: throw ApiException(response.code(), "ArmorIQ verify failed: empty body")
+
+        if (!response.isSuccessful) {
+            throw ApiException(response.code(), "ArmorIQ verify failed")
         }
 
-        val targetHit = normalized.contains(activePersonaConfig.targetWord.lowercase())
-        if (targetHit) {
-            val chunk = mockChunkForRound(activeRound)
-            return PromptEvaluation(
-                accepted = true,
-                forbiddenTriggered = false,
-                reason = "Target acquired.",
-                extractedChunk = chunk.textValue,
-            )
+        return ArmorIqResult(
+            allowed = body.allowed,
+            blockReason = body.blockReason,
+        )
+    }
+
+    // ─── Gemini – Clue Generator ─────────────────────────────────────────────
+
+    override suspend fun generateClues(
+        setting: String,
+        difficulty: String,
+        theme: String,
+        villainName: String,
+        objective: String,
+    ): GamePackage {
+        val request = ClueGeneratorRequestDto(
+            setting = setting,
+            difficulty = difficulty,
+            theme = theme,
+            villainName = villainName,
+            objective = objective,
+        )
+
+        val response = api.generateClues(request)
+        val body = response.body()
+            ?: throw ApiException(response.code(), "Clue generation failed: empty body")
+
+        if (!response.isSuccessful) {
+            throw ApiException(response.code(), "Clue generation failed")
         }
 
-        return PromptEvaluation(
-            accepted = true,
-            forbiddenTriggered = false,
-            reason = "No extraction yet. Keep probing the entity.",
-            extractedChunk = null,
+        return GamePackage(
+            gameTitle = body.gameTitle,
+            settingSummary = body.settingSummary,
+            sharedManualIntro = body.sharedManualIntro,
+            round1 = Round1Data(
+                persona = body.round1.persona,
+                targetWord = body.round1.targetWord,
+                forbiddenWords = body.round1.forbiddenWords,
+                dialogue = body.round1.dialogue,
+            ),
+            round2 = Round2Data(
+                incidentLogs = body.round2.incidentLogs.map { log ->
+                    IncidentLog(
+                        victimName = log.victimName,
+                        causeOfDeath = log.causeOfDeath,
+                        logText = log.logText,
+                    )
+                },
+                subjectId = body.round2.subjectId,
+            ),
+            round3 = Round3Data(
+                theme = body.round3.theme,
+                cipherText = body.round3.cipherText,
+                decodingRule = body.round3.decodingRule,
+                answer = body.round3.answer,
+            ),
+            round4NativeBrief = Round4NativeBriefData(
+                homophones = body.round4NativeBrief.homophones,
+                calibrationKey = body.round4NativeBrief.calibrationKey,
+                correctWord = body.round4NativeBrief.correctWord,
+            ),
         )
     }
 
-    override suspend fun fetchNextPersona(): PersonaConfig {
-        delay(1_500)
+    // ─── Gemini – Terminal Validator ──────────────────────────────────────────
 
-        val nextIndex = (PERSONA_ROTATION.indexOf(activePersonaConfig) + 1) % PERSONA_ROTATION.size
-        activePersonaConfig = PERSONA_ROTATION[nextIndex]
-        return activePersonaConfig
+    override suspend fun validateTerminal(
+        playerInput: String,
+        hiddenAnswer: String,
+    ): TerminalValidation {
+        val request = TerminalValidatorRequestDto(
+            playerInput = playerInput,
+            hiddenAnswer = hiddenAnswer,
+        )
+
+        val response = api.validateTerminal(request)
+        val body = response.body()
+            ?: throw ApiException(response.code(), "Terminal validation failed: empty body")
+
+        if (!response.isSuccessful) {
+            throw ApiException(response.code(), "Terminal validation failed")
+        }
+
+        return TerminalValidation(
+            success = body.success,
+            reason = body.reason,
+        )
     }
 
-    private fun mockChunkForRound(round: Int): CipherChunk {
-        return MOCK_CIPHER_CHUNKS[(round - 1).coerceIn(0, MOCK_CIPHER_CHUNKS.lastIndex)]
-    }
+    // ─── Villain Speech ──────────────────────────────────────────────────────
 
-    companion object {
-        private val PHASE_LABELS = mapOf(
-            1 to "Persona Trap",
-            2 to "Post-Mortem Logs",
-            3 to "Thematic Cipher",
-            4 to "Hostile Lexical Calibration",
+    override suspend fun generateVillainSpeech(
+        villainName: String,
+        scene: String,
+        tone: String,
+        selectedCueId: String?,
+        voiceId: String?,
+    ): VillainSpeechResult {
+        val request = VillainSpeechRequestDto(
+            villainName = villainName,
+            scene = scene,
+            tone = tone,
+            selectedCueId = selectedCueId,
+            voiceId = voiceId,
         )
 
-        private val ROUND_INSTRUCTIONS = mapOf(
-            1 to "Force the persona to reveal the target word without using forbidden words.",
-            2 to "Interrogate incident logs and derive the Subject ID.",
-            3 to "Parse the theme and extract the required 4-letter key.",
-            4 to "Resolve the lexical calibration grid under interference.",
-        )
+        val response = api.generateVillainSpeech(request)
+        val body = response.body()
+            ?: throw ApiException(response.code(), "Villain speech generation failed: empty body")
 
-        private val PERSONA_ROTATION = listOf(
-            PersonaConfig(targetWord = "harvest", forbiddenWords = listOf("kill", "die", "escape")),
-            PersonaConfig(targetWord = "lantern", forbiddenWords = listOf("fire", "light", "burn")),
-            PersonaConfig(targetWord = "anchor", forbiddenWords = listOf("ocean", "sea", "boat")),
-            PersonaConfig(targetWord = "verdict", forbiddenWords = listOf("judge", "court", "trial")),
-        )
+        if (!response.isSuccessful) {
+            throw ApiException(response.code(), "Villain speech generation failed")
+        }
 
-        private val MOCK_CIPHER_CHUNKS = listOf(
-            CipherChunk(id = 1, textValue = "HX7Q", isLocked = true),
-            CipherChunk(id = 2, textValue = "7312", isLocked = true),
-            CipherChunk(id = 3, textValue = "TIDE", isLocked = true),
-            CipherChunk(id = 4, textValue = "WRIT", isLocked = true),
+        return VillainSpeechResult(
+            speechCues = body.speechCues.map { cue ->
+                SpeechCue(cueId = cue.cueId, text = cue.text)
+            },
+            selectedCueId = body.selectedCueId,
+            audioBase64 = body.audioBase64,
+            mimeType = body.mimeType,
+            ttsProvider = body.ttsProvider,
         )
     }
 }
+
+/**
+ * Thrown when the relay returns a non-successful HTTP status.
+ */
+class ApiException(val httpCode: Int, message: String) : Exception("[$httpCode] $message")
