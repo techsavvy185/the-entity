@@ -40,8 +40,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.bitbenders.theentity.data.round4.RoundFourCatalog
 import com.bitbenders.theentity.ui.components.HardwareDial
 import com.bitbenders.theentity.ui.effects.tacticalCrtEffectIfSupported
 import com.bitbenders.theentity.ui.theme.EntityTypography
@@ -58,7 +61,7 @@ private enum class P2Tab(val label: String, val icon: String) {
     Index("INDEX", "[]"),
     Personas("PERSONAS", "@"),
     Poems("POEMS", "~"),
-    Eyes("EYES", "O")
+    Display("DISPLAY", "?")
 }
 
 @Composable
@@ -300,21 +303,48 @@ fun P2DashboardScreen(
                                         )
                                     }
 
-                                    P2Tab.Eyes -> {
-                                        ManualHeading("EYES // OBSERVATION PROTOCOL")
+                                    P2Tab.Display -> {
+                                        ManualHeading("DISPLAY // WHO'S ON FIRST")
                                         Spacer(Modifier.height(6.dp))
                                         ManualSection(
-                                            "VISUAL DISCIPLINE",
-                                            "Do not hold gaze on reflective surfaces for longer than 4 seconds. Scan corners clockwise."
+                                            "STEP 1 — DISPLAY LOOKUP",
+                                            "Read the word shown on the display. Find it below. The ◉ marks which button position to READ the label from."
                                         )
+                                        Spacer(Modifier.height(4.dp))
+
+                                        val entries = RoundFourCatalog.displayEntries
+                                        entries.chunked(3).forEach { rowEntries ->
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                rowEntries.forEach { entry ->
+                                                    DisplayLookupCell(
+                                                        displayWord = entry.displayWord,
+                                                        positionRow = entry.position.row,
+                                                        positionCol = entry.position.col,
+                                                        modifier = Modifier.weight(1f)
+                                                    )
+                                                }
+                                                repeat(3 - rowEntries.size) {
+                                                    Spacer(Modifier.weight(1f))
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(Modifier.height(12.dp))
                                         ManualSection(
-                                            "LENS CALIBRATION",
-                                            "When static blooms at screen edges, lower contrast before adjusting focus to avoid false trails."
+                                            "STEP 2 — PRIORITY LISTS",
+                                            "Using the label from Step 1, find it below. Press the FIRST button in the list that is also visible on the module."
                                         )
-                                        ManualSection(
-                                            "WATCH REPORT",
-                                            "Camera 2 showed six frames of an empty corridor, then one frame with a chair facing the wall."
-                                        )
+                                        Spacer(Modifier.height(4.dp))
+
+                                        RoundFourCatalog.priorityEntries.forEach { entry ->
+                                            PriorityListRow(
+                                                keyword = entry.label,
+                                                words = entry.priority
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -441,5 +471,92 @@ private fun ManualSection(title: String, body: String) {
             style = EntityTypography.titleLarge.copy(fontSize = 14.sp, lineHeight = 16.sp)
         )
         ManualParagraph(body)
+    }
+}
+
+@Composable
+private fun DisplayLookupCell(
+    displayWord: String,
+    positionRow: Int,
+    positionCol: Int,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .border(1.dp, PanelEdge, RoundedCornerShape(4.dp))
+            .background(Color(0x22040A12), RoundedCornerShape(4.dp))
+            .padding(4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Accent, RoundedCornerShape(2.dp))
+                .padding(horizontal = 2.dp, vertical = 2.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = displayWord.ifEmpty { "\"\"" },
+                color = TabletBg,
+                style = EntityTypography.headlineMedium.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            for (r in 0..2) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    for (c in 0..1) {
+                        val active = r == positionRow && c == positionCol
+                        Box(
+                            modifier = Modifier
+                                .size(18.dp)
+                                .border(0.5.dp, PanelEdge.copy(alpha = 0.4f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (active) "◉" else "·",
+                                color = if (active) Accent else AccentSoft,
+                                style = EntityTypography.bodyMedium.copy(
+                                    fontSize = if (active) 13.sp else 9.sp,
+                                    lineHeight = 14.sp
+                                ),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PriorityListRow(
+    keyword: String,
+    words: List<String>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(0.5.dp, PanelEdge.copy(alpha = 0.4f), RoundedCornerShape(3.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = "\"$keyword\"",
+            color = Accent,
+            style = EntityTypography.headlineMedium.copy(fontSize = 12.sp, lineHeight = 14.sp)
+        )
+        Text(
+            text = words.joinToString(", "),
+            color = Color(0xFFB9D8E6),
+            style = EntityTypography.bodyMedium.copy(fontSize = 10.sp, lineHeight = 13.sp)
+        )
     }
 }
