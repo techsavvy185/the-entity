@@ -1,13 +1,15 @@
 package com.bitbenders.theentity.ui.screens.shared_screens.lobby
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 import java.util.Locale
 import javax.inject.Inject
 
@@ -20,27 +22,28 @@ class LobbyViewModel @Inject constructor(
 
     fun onCreateRoomClicked() {
         _uiState.update { it.copy(isConnecting = true, connectionError = null) }
-
-        runCatching {
-            runBlocking { backendRepository.initiateRoom(seedLabel = "The Entity") }
-        }.onSuccess { session ->
-            latestCreatedRoomCode = session.roomId
-            _uiState.update {
-                it.copy(
-                    isConnecting = false,
-                    mode = LobbyMode.CREATE,
-                    roomCode = session.roomId,
-                    joinCodeInput = "",
-                    connectionError = null,
-                )
-            }
-        }.onFailure { error ->
-            _uiState.update {
-                it.copy(
-                    isConnecting = false,
-                    mode = LobbyMode.CREATE,
-                    connectionError = error.message ?: "Failed to create room",
-                )
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                backendRepository.initiateRoom(seedLabel = "The Entity")
+            }.onSuccess { session ->
+                latestCreatedRoomCode = session.roomId
+                _uiState.update {
+                    it.copy(
+                        isConnecting = false,
+                        mode = LobbyMode.CREATE,
+                        roomCode = session.roomId,
+                        joinCodeInput = "",
+                        connectionError = null,
+                    )
+                }
+            }.onFailure { error ->
+                _uiState.update {
+                    it.copy(
+                        isConnecting = false,
+                        mode = LobbyMode.CREATE,
+                        connectionError = error.message ?: "Failed to create room",
+                    )
+                }
             }
         }
     }
@@ -72,34 +75,36 @@ class LobbyViewModel @Inject constructor(
         return entered.length == ROOM_CODE_LENGTH
     }
 
-    fun resolveJoinCodeOrError(): String? {
+    fun resolveJoinCodeOrError(onResolved: (String) -> Unit) {
         val entered = _uiState.value.joinCodeInput.trim().uppercase(Locale.US)
         if (entered.length != ROOM_CODE_LENGTH) {
             _uiState.update { it.copy(connectionError = "Room code must be 6 characters") }
-            return null
+            return
         }
 
         _uiState.update { it.copy(isConnecting = true, connectionError = null) }
-        val result = runCatching {
-            runBlocking { backendRepository.joinRoom(entered) }
-        }
-
-        val joined = result.getOrNull()
-
-        if (joined == null) {
-            val reason = result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
-                ?: "Room not found. Check code and retry"
-            _uiState.update {
-                it.copy(
-                    isConnecting = false,
-                    connectionError = reason,
-                )
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = runCatching {
+                backendRepository.joinRoom(entered)
             }
-            return null
-        }
 
-        _uiState.update { it.copy(isConnecting = false, connectionError = null) }
-        return joined.roomId
+            val joined = result.getOrNull()
+
+            if (joined == null) {
+                val reason = result.exceptionOrNull()?.message?.takeIf { it.isNotBlank() }
+                    ?: "Room not found. Check code and retry"
+                _uiState.update {
+                    it.copy(
+                        isConnecting = false,
+                        connectionError = reason,
+                    )
+                }
+                return@launch
+            }
+
+            _uiState.update { it.copy(isConnecting = false, connectionError = null) }
+            onResolved(joined.roomId)
+        }
     }
 
     companion object {

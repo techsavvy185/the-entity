@@ -127,6 +127,20 @@ interface EntityBackendApi {
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
+    @POST("call/configure_terminal_round_for_room")
+    suspend fun configureTerminalRoundForRoom(
+        @Header("Authorization") authorization: String?,
+        @Body args: JsonArray,
+    ): Response<ResponseBody>
+
+    @Headers("Content-Type: application/json")
+    @POST("call/configure_terminal_gemini")
+    suspend fun configureTerminalGemini(
+        @Header("Authorization") authorization: String?,
+        @Body args: JsonArray,
+    ): Response<ResponseBody>
+
     @Headers("Content-Type: text/plain")
     @POST("sql")
     suspend fun querySql(

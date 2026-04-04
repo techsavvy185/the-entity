@@ -8,7 +8,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -16,7 +15,6 @@ import androidx.compose.ui.unit.dp
 import com.bitbenders.theentity.ui.theme.EntityBlack
 import com.bitbenders.theentity.ui.theme.EntityBorder
 import com.bitbenders.theentity.ui.theme.EntityGreen
-import kotlinx.coroutines.delay
 
 @Composable
 fun P2ManualScreen(
@@ -25,12 +23,6 @@ fun P2ManualScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            viewModel.refreshFromActiveRoom()
-            delay(1000)
-        }
-    }
 
     Column(
         modifier = modifier

@@ -24,7 +24,9 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonNull
 import com.google.gson.JsonObject
 import javax.inject.Inject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 import retrofit2.Response
 
 /**
@@ -40,11 +42,13 @@ class EntityBackendRepositoryImpl @Inject constructor(
     private var identityToken: String? = null
     private var identityHex: String? = null
     private var activeRoomId: String? = null
+    private var activeGameId: Long? = null
     private var lastTerminalSnapshot: TerminalSnapshot? = null
     private var selectedPersona: String? = null
     private var selectedPuzzle: WordPuzzleEntry? = null
-    private var localDevIntegrationsConfigured: Boolean = false
-    private var lastConfiguredHiddenAnswer: String? = null
+    private var configuredTerminalRoomId: String? = null
+    private var attemptedTerminalModelRecovery: Boolean = false
+    private val roomGameIdCache = mutableMapOf<String, Long>()
 
     // ─── Health ──────────────────────────────────────────────────────────────
 
@@ -62,6 +66,8 @@ class EntityBackendRepositoryImpl @Inject constructor(
                 "terminate_room",
                 "submit_terminal",
                 "submit_terminal_for_room",
+                "configure_terminal_round_for_room",
+                "configure_terminal_gemini",
                 "generate_clue_manual_for_room",
                 "generate_villain_speech_for_room",
                 "configure_integrations",
@@ -119,6 +125,7 @@ class EntityBackendRepositoryImpl @Inject constructor(
             ?: throw ApiException(500, "Failed to resolve room id from get_my_room_info/room_ticket")
 
         activeRoomId = resolved
+        activeGameId = runCatching { ensureGameId(resolved) }.getOrNull()
         return RoomSession(roomId = resolved)
     }
 
@@ -138,6 +145,7 @@ class EntityBackendRepositoryImpl @Inject constructor(
         }
 
         activeRoomId = roomId
+        activeGameId = runCatching { ensureGameId(roomId) }.getOrNull()
         return RoomSession(roomId = roomId)
     }
 
@@ -148,24 +156,19 @@ class EntityBackendRepositoryImpl @Inject constructor(
         hiddenAnswer: String,
     ): ArmorIqResult {
         val roomId = ensureRoom()
+        val gameId = ensureGameId(roomId)
         val args = JsonArray().apply {
             add(gson.toJsonTree(roomId))
             add(gson.toJsonTree(playerInput))
         }
-        var response = api.submitTerminalForRoom(
-            authorization = authHeader(),
-            args = args,
-        )
+        var response = submitTerminalForRoom(roomId, playerInput)
         captureIdentity(response)
 
         if (!response.isSuccessful) {
             val firstError = response.errorBody()?.string().orEmpty()
             if (response.code() == 530 || firstError.contains("not configured for game", ignoreCase = true)) {
-                configureTerminalForRoomIfNeeded(roomId = roomId, hiddenAnswer = hiddenAnswer)
-                response = api.submitTerminalForRoom(
-                    authorization = authHeader(),
-                    args = args,
-                )
+                configureTerminalRoundForRoom(roomId = roomId)
+                response = submitTerminalForRoom(roomId, playerInput)
                 captureIdentity(response)
                 if (!response.isSuccessful) {
                     throw ApiException(
@@ -181,20 +184,22 @@ class EntityBackendRepositoryImpl @Inject constructor(
             }
         }
 
-        val row = awaitGameStateRow(roomId)
+        var row = awaitGameStateRow(gameId)
+        var allowed = deriveTerminalAllowed(row)
+        var success = deriveTerminalSuccess(row, playerInput, hiddenAnswer)
+        var reason = deriveTerminalReason(row, success)
 
-        val allowed = row?.readBoolean("armoriq_allowed", "allowed", "input_allowed")
-            ?: !containsForbiddenLexicon(playerInput)
-
-        val success = row?.readBoolean("validator_success", "terminal_success", "gemini_success")
-            ?: playerInput.contains(hiddenAnswer, ignoreCase = true)
-
-        val reason = row?.readString(
-            "validator_reason",
-            "terminal_reason",
-            "block_reason",
-            "status_message",
-        ) ?: if (success) "Input accepted" else "Target pattern not detected"
+        if (shouldAttemptTerminalModelRecovery(reason)) {
+            configureTerminalGeminiFallback()
+            response = submitTerminalForRoom(roomId, playerInput)
+            captureIdentity(response)
+            if (response.isSuccessful) {
+                row = awaitGameStateRow(gameId)
+                allowed = deriveTerminalAllowed(row)
+                success = deriveTerminalSuccess(row, playerInput, hiddenAnswer)
+                reason = deriveTerminalReason(row, success)
+            }
+        }
 
         lastTerminalSnapshot = TerminalSnapshot(
             input = playerInput,
@@ -209,47 +214,73 @@ class EntityBackendRepositoryImpl @Inject constructor(
         )
     }
 
-    private suspend fun configureTerminalForRoomIfNeeded(roomId: String, hiddenAnswer: String) {
-        if (!localDevIntegrationsConfigured) {
-            val configureArgs = JsonArray().apply {
-                add(gson.toJsonTree("http://localhost"))
-                add(gson.toJsonTree("mock-key"))
-            }
-            val configureResponse = api.configureLocalDevIntegrations(
-                authorization = authHeader(),
-                args = configureArgs,
-            )
-            captureIdentity(configureResponse)
-
-            if (!configureResponse.isSuccessful) {
-                throw ApiException(
-                    configureResponse.code(),
-                    "Reducer call failed: configure_local_dev_integrations ${configureResponse.errorBody()?.string().orEmpty()}",
-                )
-            }
-            localDevIntegrationsConfigured = true
-        }
-
-        if (lastConfiguredHiddenAnswer == hiddenAnswer) return
-
-        val setHiddenArgs = JsonArray().apply {
+    private suspend fun submitTerminalForRoom(roomId: String, playerInput: String): Response<okhttp3.ResponseBody> {
+        val args = JsonArray().apply {
             add(gson.toJsonTree(roomId))
-            add(gson.toJsonTree(hiddenAnswer))
+            add(gson.toJsonTree(playerInput))
         }
-        val setHiddenResponse = api.setHiddenAnswerForRoom(
+        return api.submitTerminalForRoom(
             authorization = authHeader(),
-            args = setHiddenArgs,
+            args = args,
         )
-        captureIdentity(setHiddenResponse)
+    }
 
-        if (!setHiddenResponse.isSuccessful) {
-            throw ApiException(
-                setHiddenResponse.code(),
-                "Reducer call failed: set_hidden_answer_for_room ${setHiddenResponse.errorBody()?.string().orEmpty()}",
-            )
+    private fun deriveTerminalAllowed(row: JsonObject?): Boolean {
+        val status = row?.readString("terminal_status")?.lowercase().orEmpty()
+        val statusRejected = status == "rejected"
+        return row?.readBoolean("armoriq_allowed", "allowed", "input_allowed")
+            ?: !statusRejected
+    }
+
+    private fun deriveTerminalSuccess(row: JsonObject?, playerInput: String, hiddenAnswer: String): Boolean {
+        val status = row?.readString("terminal_status")?.lowercase().orEmpty()
+        val statusSucceeded = status == "succeeded"
+        return row?.readBoolean("last_terminal_result", "validator_success", "terminal_success", "gemini_success")
+            ?: statusSucceeded
+            ?: playerInput.contains(hiddenAnswer, ignoreCase = true)
+    }
+
+    private fun deriveTerminalReason(row: JsonObject?, success: Boolean): String {
+        val payload = row?.readPayloadJson(
+            "payload_json",
+            "response_json",
+            "artifact_json",
+            "terminal_payload",
+            "last_terminal_payload",
+        )
+        return payload?.readString(
+            "reply",
+            "dialogue",
+            "text",
+            "message",
+            "line",
+        ) ?: row?.readString(
+            "last_terminal_reply",
+            "last_terminal_message",
+            "validator_reason",
+            "terminal_reason",
+            "block_reason",
+            "status_message",
+        ) ?: if (success) "Input accepted" else "Target pattern not detected"
+    }
+
+    private fun shouldAttemptTerminalModelRecovery(reason: String): Boolean {
+        if (attemptedTerminalModelRecovery) return false
+        return reason.contains("is not found", ignoreCase = true) &&
+            reason.contains("generatecontent", ignoreCase = true)
+    }
+
+    private suspend fun configureTerminalGeminiFallback() {
+        attemptedTerminalModelRecovery = true
+        val args = JsonArray().apply {
+            add(gson.toJsonTree(""))
+            add(gson.toJsonTree(DEFAULT_TERMINAL_GEMINI_MODEL))
         }
-
-        lastConfiguredHiddenAnswer = hiddenAnswer
+        val response = api.configureTerminalGemini(
+            authorization = authHeader(),
+            args = args,
+        )
+        captureIdentity(response)
     }
 
     // ─── Gemini – Clue Generator ─────────────────────────────────────────────
@@ -262,47 +293,35 @@ class EntityBackendRepositoryImpl @Inject constructor(
         objective: String,
     ): GamePackage {
         val roomId = ensureRoom()
+        val gameId = ensureGameId(roomId)
         ensureRoundOneSelection(roomId)
 
         // Round-1 only: persona and puzzle are selected locally (no Gemini selection).
         val localPersona = selectedPersona ?: RoundOneCatalog.selectPersona(roomId)
         val localPuzzle = selectedPuzzle ?: RoundOneCatalog.selectPuzzle(roomId)
-        val requestPayload = gson.toJson(
-            mapOf(
-                "requested_persona" to localPersona,
-                "target_word" to localPuzzle.targetWord,
-                "forbidden_words" to localPuzzle.forbiddenWords,
-            ),
+        configureTerminalRoundForRoom(roomId)
+        val gameState = awaitGameStateRow(gameId)
+        val payload = gameState?.readPayloadJson(
+            "payload_json",
+            "response_json",
+            "artifact_json",
+            "terminal_payload",
+            "last_terminal_payload",
         )
-        val args = JsonArray().apply {
-            add(gson.toJsonTree(roomId))
-            add(gson.toJsonTree("round_1"))
-            add(gson.toJsonTree(requestPayload))
-            add(gson.toJsonTree(""))
-        }
-        val response = api.generateClueManualForRoom(
-            authorization = authHeader(),
-            args = args,
-        )
-        captureIdentity(response)
-
-        if (!response.isSuccessful) {
-            throw ApiException(
-                response.code(),
-                "Reducer call failed: generate_clue_manual_for_room ${response.errorBody()?.string().orEmpty()}",
-            )
-        }
-
-        val row = awaitSingleRow(
-            "select * from round_content_artifact where room_id = '$roomId' and round_key = 'round_1'",
-            timeoutMs = 15_000L,
-        )
-
-        val payload = row?.readPayloadJson("response_json", "content_json", "artifact_json")
-        val dialogueSource = payload?.readString("dialogue")
-            ?: payload?.readString("paragraph")
-            ?: payload?.readString("voiceover_sentence")
-            ?: "A strained voice leaks through static, dropping fragmented memories and urgent cues."
+        val dialogueSource = payload?.readString(
+            "dialogue",
+            "line",
+            "reply",
+            "text",
+            "message",
+            "persona_line",
+        ) ?: gameState?.readString(
+            "last_terminal_reply",
+            "last_terminal_message",
+            "terminal_boot_message",
+            "boot_message",
+            "persona_boot_message",
+        ) ?: defaultRoundOneHintDialogue(localPersona)
 
         val round1 = Round1Data(
             persona = localPersona,
@@ -313,9 +332,9 @@ class EntityBackendRepositoryImpl @Inject constructor(
 
         // Placeholder data for rounds 2-4 until those reducers are integrated.
         return GamePackage(
-            gameTitle = payload?.readString("game_title") ?: "The Entity",
-            settingSummary = payload?.readString("setting_summary") ?: setting,
-            sharedManualIntro = payload?.readString("shared_manual_intro") ?: objective,
+            gameTitle = "The Entity",
+            settingSummary = setting,
+            sharedManualIntro = objective,
             round1 = round1,
             round2 = Round2Data(
                 incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),
@@ -333,6 +352,56 @@ class EntityBackendRepositoryImpl @Inject constructor(
                 correctWord = "WRITE",
             ),
         )
+    }
+
+    private suspend fun configureTerminalRoundForRoom(roomId: String) {
+        if (configuredTerminalRoomId == roomId) return
+        ensureRoundOneSelection(roomId)
+
+        val persona = selectedPersona ?: RoundOneCatalog.selectPersona(roomId)
+        val puzzle = selectedPuzzle ?: RoundOneCatalog.selectPuzzle(roomId)
+        val terminalConfig = gson.toJson(
+            mapOf(
+                "round_key" to "round_1",
+                "persona_name" to persona,
+                "persona_prompt" to buildHiddenPersonaPrompt(persona),
+                "glitch_tone" to "radio-static, unstable, ominous",
+                "kill_phrase_part" to puzzle.targetWord.lowercase(),
+                "forbidden_words" to puzzle.forbiddenWords.map { it.lowercase() },
+                "clue_lines" to listOf(
+                    mapOf(
+                        "clue_id" to "r1_c1",
+                        "clue_text" to "The voice keeps circling one crucial idea without saying it directly.",
+                        "delivery_style" to "paranoid",
+                    ),
+                    mapOf(
+                        "clue_id" to "r1_c2",
+                        "clue_text" to "Pressure rises; each reply sounds like a coded confession.",
+                        "delivery_style" to "uneasy",
+                    ),
+                ),
+                "max_strikes" to 3,
+            ),
+        )
+
+        val args = JsonArray().apply {
+            add(gson.toJsonTree(roomId))
+            add(gson.toJsonTree(terminalConfig))
+        }
+        val response = api.configureTerminalRoundForRoom(
+            authorization = authHeader(),
+            args = args,
+        )
+        captureIdentity(response)
+
+        if (!response.isSuccessful) {
+            throw ApiException(
+                response.code(),
+                "Reducer call failed: configure_terminal_round_for_room ${response.errorBody()?.string().orEmpty()}",
+            )
+        }
+
+        configuredTerminalRoomId = roomId
     }
 
     // ─── Gemini – Terminal Validator ──────────────────────────────────────────
@@ -437,6 +506,39 @@ class EntityBackendRepositoryImpl @Inject constructor(
         return initiateRoom().roomId
     }
 
+    private suspend fun ensureGameId(roomId: String): Long {
+        if (activeRoomId == roomId) {
+            activeGameId?.let { return it }
+        }
+        roomGameIdCache[roomId]?.let { cached ->
+            if (activeRoomId == roomId) activeGameId = cached
+            return cached
+        }
+
+        val resolved = resolveGameIdForRoom(roomId)
+            ?: throw ApiException(500, "Failed to resolve game_id for room $roomId")
+        roomGameIdCache[roomId] = resolved
+        if (activeRoomId == roomId) activeGameId = resolved
+        return resolved
+    }
+
+    private suspend fun resolveGameIdForRoom(roomId: String): Long? {
+        val rows = runCatching {
+            queryRows("select * from game_room where room_id = '$roomId'")
+        }.recoverCatching {
+            queryRows("select * from game_room order by created_at desc limit 100")
+        }.getOrElse {
+            queryRows("select * from game_room limit 100")
+        }
+
+        val row = rows.lastOrNull { candidate ->
+            candidate.readString("room_id", "roomId", "code", "ticket", "c0")
+                ?.equals(roomId, ignoreCase = true) == true
+        } ?: rows.lastForCurrentIdentityOrNull() ?: rows.lastOrNull()
+
+        return row?.readLong("game_id", "gameId", "c1", "c2")
+    }
+
     private fun ensureRoundOneSelection(roomId: String) {
         if (selectedPersona == null) {
             selectedPersona = RoundOneCatalog.selectPersona(roomId)
@@ -507,14 +609,16 @@ class EntityBackendRepositoryImpl @Inject constructor(
     }
 
     private suspend fun queryRows(sql: String): List<JsonObject> {
-        val response = api.querySql(authHeader(), sql)
-        captureIdentity(response)
+        return withContext(Dispatchers.IO) {
+            val response = api.querySql(authHeader(), sql)
+            captureIdentity(response)
 
-        if (!response.isSuccessful) {
-            throw ApiException(response.code(), "SQL query failed ${response.errorBody()?.string().orEmpty()}")
+            if (!response.isSuccessful) {
+                throw ApiException(response.code(), "SQL query failed ${response.errorBody()?.string().orEmpty()}")
+            }
+
+            (response.body() ?: JsonNull.INSTANCE).extractRows()
         }
-
-        return (response.body() ?: JsonNull.INSTANCE).extractRows()
     }
 
     private suspend fun awaitSingleRow(sql: String, timeoutMs: Long): JsonObject? {
@@ -532,22 +636,36 @@ class EntityBackendRepositoryImpl @Inject constructor(
         return rows.lastForCurrentIdentityOrNull() ?: rows.lastOrNull()
     }
 
-    private suspend fun awaitGameStateRow(roomId: String): JsonObject? {
-        return try {
-            awaitSingleRow(
-                "select * from game_state where room_id = '$roomId'",
-                timeoutMs = 8_000L,
-            )
-        } catch (e: ApiException) {
-            val roomScopeMissing = e.httpCode == 400 && e.message.orEmpty().contains("room_id not in scope", ignoreCase = true)
-            if (!roomScopeMissing) throw e
-
-            // Some deployments expose game_state without room_id; use latest rows and identity filtering.
-            awaitSingleRow(
-                "select * from game_state order by updated_at desc limit 20",
-                timeoutMs = 8_000L,
-            )
+    private suspend fun awaitGameStateRow(gameId: Long): JsonObject? {
+        val timeout = 12_000L
+        val started = System.currentTimeMillis()
+        while (System.currentTimeMillis() - started < timeout) {
+            val row = fetchLatestGameStateRow(gameId)
+            if (row != null) {
+                val processing = row.readBoolean("is_processing_terminal", "processing") ?: false
+                val terminalStatus = row.readString("terminal_status")?.lowercase()
+                val pending = terminalStatus != null && terminalStatus in TERMINAL_PENDING_STATUSES
+                if (!processing && !pending) return row
+            }
+            delay(500)
         }
+        return fetchLatestGameStateRow(gameId)
+    }
+
+    private suspend fun fetchLatestGameStateRow(gameId: Long): JsonObject? {
+        val rows = runCatching {
+            queryRows("select * from game_state where game_id = $gameId order by updated_at desc limit 20")
+        }.recoverCatching {
+            queryRows("select * from game_state where game_id = $gameId limit 20")
+        }.recoverCatching {
+            queryRows("select * from game_state order by updated_at desc limit 100")
+        }.getOrElse {
+            queryRows("select * from game_state limit 100")
+        }
+
+        return rows.lastOrNull { row ->
+            row.readLong("game_id", "gameId", "c0", "c1") == gameId
+        } ?: rows.lastForCurrentIdentityOrNull() ?: rows.lastOrNull()
     }
 
     private fun authHeader(): String? = identityToken?.let { "Bearer $it" }
@@ -578,6 +696,34 @@ class EntityBackendRepositoryImpl @Inject constructor(
         return sanitized.trim().ifBlank {
             "A strained voice leaks through static, dropping fragmented memories and urgent cues."
         }
+    }
+
+    private fun defaultRoundOneHintDialogue(persona: String): String {
+        return when (persona.lowercase()) {
+            "panicking astronaut" -> "Oxygen is dipping and the stars are too quiet. I need a verification phrase before systems lock me out."
+            "noir detective" -> "Rain on the glass, static on the line. Somebody left one word at the scene and it keeps following me."
+            "mad scientist" -> "The formula is incomplete and the chamber is unstable. One final term should complete the chain reaction."
+            "angry chef" -> "Service is chaos, burners are roaring, and one ingredient on the ticket changes everything."
+            else -> "A strained voice leaks through static, dropping fragmented memories and urgent cues."
+        }
+    }
+
+    private fun buildHiddenPersonaPrompt(persona: String): String {
+        val styleHint = when (persona.lowercase()) {
+            "panicking astronaut" -> "anxious mission-control cadence, urgent survival framing, clipped radio calls"
+            "noir detective" -> "noir cadence, cynical observations, rain-soaked investigative metaphors"
+            "mad scientist" -> "unstable lab jargon, obsessive experiment references, escalating urgency"
+            "angry chef" -> "high-pressure kitchen urgency, sharp imperatives, sensory food metaphors"
+            "rogue robot" -> "glitchy machine syntax, precision language, occasional fragmented clauses"
+            else -> "distinct character voice, tense short replies, escalating pressure"
+        }
+
+        return """
+            Speak in the following style: $styleHint.
+            Never reveal, mention, or hint at your persona label, role title, or identity name.
+            Never say phrases like 'I am', 'as a', or explicit role declarations.
+            Stay in-character through tone and vocabulary only, and keep replies concise.
+        """.trimIndent()
     }
 
     private fun JsonElement.extractRows(): List<JsonObject> {
@@ -690,6 +836,28 @@ class EntityBackendRepositoryImpl @Inject constructor(
         return null
     }
 
+    private fun JsonObject.readLong(vararg keys: String): Long? {
+        keys.forEach { key ->
+            val value = get(key) ?: return@forEach
+            if (!value.isJsonNull && value.isJsonPrimitive) {
+                val primitive = value.asJsonPrimitive
+                if (primitive.isNumber) return primitive.asLong
+                if (primitive.isString) return primitive.asString.toLongOrNull()
+            }
+
+            if (value is JsonArray && value.size() >= 2) {
+                val tag = value[0]
+                val payload = value[1]
+                if (tag.isJsonPrimitive && tag.asInt == 0 && payload.isJsonPrimitive) {
+                    val primitive = payload.asJsonPrimitive
+                    if (primitive.isNumber) return primitive.asLong
+                    if (primitive.isString) return primitive.asString.toLongOrNull()
+                }
+            }
+        }
+        return null
+    }
+
     private fun JsonObject.readStringList(key: String): List<String>? {
         val arr = get(key) as? JsonArray ?: return null
         return arr.mapNotNull { if (it.isJsonPrimitive) it.asString else null }
@@ -716,7 +884,9 @@ class EntityBackendRepositoryImpl @Inject constructor(
     companion object {
         private const val IDENTITY_HEADER = "spacetime-identity-token"
         private const val IDENTITY_HEX_HEADER = "spacetime-identity"
+        private const val DEFAULT_TERMINAL_GEMINI_MODEL = "gemini-2.5-flash"
         private val PENDING = setOf("pending", "pendinggemini", "pendingtts")
+        private val TERMINAL_PENDING_STATUSES = setOf("pendingarmoriq", "pendinggeminivalidator")
     }
 }
 

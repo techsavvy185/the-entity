@@ -9,12 +9,14 @@ import com.bitbenders.theentity.domain.repository.IGameEngineRepository
 import com.bitbenders.theentity.domain.usecases.EvaluatePlayerInputUseCase
 import com.bitbenders.theentity.domain.usecases.ResolveAnomalyUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import javax.inject.Inject
 
@@ -97,7 +99,9 @@ class P1TerminalViewModel @Inject constructor(
     private fun initializeGame() {
         viewModelScope.launch {
             try {
-                val health = entityBackendRepository.checkHealth()
+                val health = withContext(Dispatchers.IO) {
+                    entityBackendRepository.checkHealth()
+                }
                 // Show boot sequence with typewriter effect
                 val bootSequence = listOf(
                     "> penguin says hi :)"
@@ -312,13 +316,15 @@ class P1TerminalViewModel @Inject constructor(
         // Evaluate prompt with use case
         viewModelScope.launch {
             try {
-                val gamePackage = entityBackendRepository.generateClues(
-                    setting = "Containment chamber",
-                    difficulty = "hard",
-                    theme = "rogue_ai",
-                    villainName = "THE ENTITY",
-                    objective = "Extract root eradication cipher",
-                )
+                val gamePackage = withContext(Dispatchers.IO) {
+                    entityBackendRepository.generateClues(
+                        setting = "Containment chamber",
+                        difficulty = "hard",
+                        theme = "rogue_ai",
+                        villainName = "THE ENTITY",
+                        objective = "Extract root eradication cipher",
+                    )
+                }
 
                 round1TargetWord = gamePackage.round1.targetWord
                 round1ForbiddenWords = gamePackage.round1.forbiddenWords
@@ -428,10 +434,12 @@ class P1TerminalViewModel @Inject constructor(
                     return@launch
                 }
 
-                val result = evaluatePlayerInputUseCase(
-                    input = prompt,
-                    hiddenAnswer = round1TargetWord,
-                )
+                val result = withContext(Dispatchers.IO) {
+                    evaluatePlayerInputUseCase(
+                        input = prompt,
+                        hiddenAnswer = round1TargetWord,
+                    )
+                }
                 if (result.forbiddenTriggered) {
                     _uiState.update {
                         it.copy(
@@ -446,8 +454,16 @@ class P1TerminalViewModel @Inject constructor(
                 if (result.accepted) {
                     lockChunk(0, round1TargetWord.uppercase())
                     _uiState.update {
+                        val aiReply = result.reason.takeIf { text ->
+                            text.isNotBlank() &&
+                                !text.startsWith("Input accepted", ignoreCase = true) &&
+                                !text.startsWith("Validation completed", ignoreCase = true)
+                        }
                         val withRound2Logs = appendRound2IncidentLogsIfNeeded(
-                            it.chatHistory + "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                            it.chatHistory + listOfNotNull(
+                                aiReply?.let { reply -> "[ENTITY_ZERO]: $reply" },
+                                "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                            ),
                         )
                         it.copy(
                             chatHistory = withRound2Logs,
@@ -457,7 +473,8 @@ class P1TerminalViewModel @Inject constructor(
                         )
                     }
                 } else {
-                    _uiState.update { it.copy(chatHistory = it.chatHistory + "AI DEFLECTED. REFRAME PROMPT.") }
+                    val aiReply = result.reason.takeIf { it.isNotBlank() } ?: "AI DEFLECTED. REFRAME PROMPT."
+                    _uiState.update { it.copy(chatHistory = it.chatHistory + "[ENTITY_ZERO]: $aiReply") }
                 }
             } catch (e: Exception) {
                 _uiState.update { state ->

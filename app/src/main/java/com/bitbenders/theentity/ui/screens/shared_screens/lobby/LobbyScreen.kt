@@ -50,6 +50,7 @@ fun LobbyScreen(
 
         Button(
             onClick = { viewModel.onCreateRoomClicked() },
+            enabled = !uiState.isConnecting,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(80.dp),
@@ -69,6 +70,7 @@ fun LobbyScreen(
 
         Button(
             onClick = { viewModel.onJoinModeClicked() },
+            enabled = !uiState.isConnecting,
             modifier = Modifier
                 .fillMaxWidth()
                 .height(80.dp),
@@ -116,10 +118,11 @@ fun LobbyScreen(
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = {
-                    val joinCode = viewModel.resolveJoinCodeOrError() ?: return@Button
-                    onJoinAsOperator(joinCode)
+                    viewModel.resolveJoinCodeOrError { joinCode ->
+                        onJoinAsOperator(joinCode)
+                    }
                 },
-                enabled = viewModel.canJoinCurrentCode(),
+                enabled = viewModel.canJoinCurrentCode() && !uiState.isConnecting,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = EntityGreen,
                     contentColor = EntityBlack,

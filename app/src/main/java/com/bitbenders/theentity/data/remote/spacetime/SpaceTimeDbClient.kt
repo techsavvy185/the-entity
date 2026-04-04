@@ -10,21 +10,21 @@ class SpaceTimeDbClient @Inject constructor() {
     fun observeHardwareActions(): Flow<P2HardwareAction> = flow {
         var tick = 0L
         while (true) {
-            // Smooth oscillation in [0f..1f] to mimic a continuously turning frequency dial.
-            val normalizedDial = (((tick % 240L).toFloat() / 239f) * 2f - 1f)
+            // Use a low-frequency signal to avoid flooding Compose with state updates.
+            val normalizedDial = (((tick % 40L).toFloat() / 39f) * 2f - 1f)
                 .let { kotlin.math.abs(it) }
                 .coerceIn(0f, 1f)
 
             emit(P2HardwareAction.DialTurn(normalizedDial))
 
-            // Roughly every ~2 seconds at 60fps, emit a keypad event as well.
-            if (tick % 120L == 0L) {
-                val symbol = MOCK_SYMBOLS[(tick / 120L % MOCK_SYMBOLS.size).toInt()]
+            // Emit a keypad event roughly every 2 seconds.
+            if (tick % 8L == 0L) {
+                val symbol = MOCK_SYMBOLS[(tick / 8L % MOCK_SYMBOLS.size).toInt()]
                 emit(P2HardwareAction.KeypadPress(symbol))
             }
 
             tick++
-            delay(16)
+            delay(250)
         }
     }
 
