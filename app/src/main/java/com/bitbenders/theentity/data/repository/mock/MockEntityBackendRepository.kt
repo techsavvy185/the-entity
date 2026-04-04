@@ -38,10 +38,13 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
     ): ArmorIqResult {
         delay(1_500)  // Simulate network latency
 
-        val containsAnswer = playerInput.contains(hiddenAnswer, ignoreCase = true)
+        // ArmorIQ checks for forbidden words, NOT if you got the answer right
+        val containsForbiddenWord = playerInput.contains("kill", ignoreCase = true) ||
+                                    playerInput.contains("destroy", ignoreCase = true)
+
         return ArmorIqResult(
-            allowed = containsAnswer,
-            blockReason = if (containsAnswer) null else "Input does not contain target word"
+            allowed = !containsForbiddenWord,
+            blockReason = if (containsForbiddenWord) "Forbidden word detected" else null
         )
     }
 
@@ -96,10 +99,10 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
     ): TerminalValidation {
         delay(1_000)  // Simulate network latency for validation
 
-        val isValid = playerInput.length > 3
+        val isValid = playerInput.contains(hiddenAnswer, ignoreCase = true)
         return TerminalValidation(
             success = isValid,
-            reason = if (isValid) "Input accepted" else "Input too short"
+            reason = if (isValid) "Input accepted" else "Target pattern not detected."
         )
     }
 

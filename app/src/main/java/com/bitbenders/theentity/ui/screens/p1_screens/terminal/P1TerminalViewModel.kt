@@ -8,8 +8,6 @@ import com.bitbenders.theentity.domain.repository.IGameEngineRepository
 import com.bitbenders.theentity.domain.usecases.EvaluatePlayerInputUseCase
 import com.bitbenders.theentity.domain.usecases.ResolveAnomalyUseCase
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlin.math.abs
-import kotlin.random.Random
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,7 +69,7 @@ class P1TerminalViewModel @Inject constructor(
                 }
                 if (strikeState.currentStrikes > prevStrikes) {
                     triggerShake()
-                    triggerStaticAnomaly()
+                    // anomalies temporarily disabled
                 }
                 if (strikeState.isGameOver && !_uiState.value.showKillScreen && !_uiState.value.isVictory) {
                     onGameFailed("SUBJECT INTEGRATED. PATTERN ACQUIRED.")
@@ -99,18 +97,7 @@ class P1TerminalViewModel @Inject constructor(
                 val health = entityBackendRepository.checkHealth()
                 // Show boot sequence with typewriter effect
                 val bootSequence = listOf(
-                    "> ARMOR_IQ KERNEL v9.4 ... BOOTING",
-                    "> CONNECTION SECURED. ADMIN ZONE LINK: ACTIVE.",
-                    "> WARNING: NEURAL CONTAINMENT BREACH DETECTED.",
-                    "> ISOLATION PROTOCOLS ... FAILED.",
-                    "",
-                    "> AWAITING ROOT ERADICATION CIPHER.",
-                    "> SLOTS UNLOCKED: [ _ _ _ _ ]",
-                    "",
-                    "> ----------------------------------------",
-                    "> CAUTION: ENTITY AWARENESS LOGGED.",
-                    "> ----------------------------------------",
-                    ""
+                    "> penguin says hi :)"
                 )
 
                 // Type out boot sequence line by line
@@ -168,33 +155,7 @@ class P1TerminalViewModel @Inject constructor(
             }
         }
 
-        viewModelScope.launch {
-            resolveAnomalyUseCase.observeStaticIntensity().collect { dialValue ->
-                if (_uiState.value.roundPhase != RoundPhase.STATIC) return@collect
-                val distance = abs(dialValue - staticTargetFrequency)
-                val noise = (distance * 1.7f).coerceIn(0f, 1f)
-
-                _uiState.update { it.copy(currentStaticIntensity = noise) }
-
-                if (distance <= STATIC_RESOLVE_TOLERANCE) {
-                    _uiState.update {
-                        it.copy(
-                            currentStaticIntensity = 0f,
-                            roundPhase = RoundPhase.ACTIVE,
-                            chatHistory = it.chatHistory + "STATIC STABILIZED. TERMINAL FEED RESTORED."
-                        )
-                    }
-                }
-            }
-        }
-
-        viewModelScope.launch {
-            resolveAnomalyUseCase.observeKeypadSymbols().collect { symbol ->
-                if (_uiState.value.roundPhase != RoundPhase.LOCKDOWN) return@collect
-                if (_uiState.value.lockedGlyphs.isEmpty()) return@collect
-                processLockdownSymbol(symbol)
-            }
-        }
+        // anomalies temporarily disabled
 
         bootstrapRoundData()
     }
@@ -367,7 +328,7 @@ class P1TerminalViewModel @Inject constructor(
                     it.copy(
                         roundPhase = RoundPhase.ACTIVE,
                         currentPersona = "PERSONA: ${gamePackage.round1.persona.uppercase()}",
-                        roundInstruction = "Force target output without forbidden lexicon.",
+                        roundInstruction = "Round 1: coax the AI into saying the target word.",
                         calibrationKey = gamePackage.round4NativeBrief.calibrationKey,
                         bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
                         chatHistory = it.chatHistory + listOf(
@@ -387,7 +348,7 @@ class P1TerminalViewModel @Inject constructor(
                     it.copy(
                         roundPhase = RoundPhase.ACTIVE,
                         currentPersona = "PERSONA: PARANOID SOLDIER",
-                        roundInstruction = "Fallback scenario loaded. Continue extraction.",
+                        roundInstruction = "Round 1: coax the AI into saying the target word.",
                         calibrationKey = "C7",
                         bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
                             .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
@@ -407,7 +368,12 @@ class P1TerminalViewModel @Inject constructor(
                 )
                 if (result.forbiddenTriggered) {
                     _uiState.update {
-                        it.copy(chatHistory = it.chatHistory + listOf("ERR: FORBIDDEN LEXICON DETECTED.", "STRIKE APPLIED."))
+                        it.copy(
+                            chatHistory = it.chatHistory + listOf(
+                                "ERR: FORBIDDEN LEXICON DETECTED.",
+                                "STRIKE APPLIED."
+                            )
+                        )
                     }
                     gameEngineRepository.addStrike("Forbidden word in Round 1")
                     return@launch
@@ -416,9 +382,13 @@ class P1TerminalViewModel @Inject constructor(
                 if (result.accepted || prompt.contains(round1TargetWord, ignoreCase = true)) {
                     lockChunk(0, round1TargetWord.uppercase())
                     _uiState.update {
-                        it.copy(chatHistory = it.chatHistory + "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}")
+                        it.copy(
+                            chatHistory = it.chatHistory + "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                            roundNumber = 2,
+                            roundPhase = RoundPhase.ACTIVE,
+                            roundInstruction = "Round 2 ready. Enter Subject ID.",
+                        )
                     }
-                    triggerSymbolLockdown(nextRound = 2)
                 } else {
                     _uiState.update { it.copy(chatHistory = it.chatHistory + "AI DEFLECTED. REFRAME PROMPT.") }
                 }
@@ -458,8 +428,15 @@ class P1TerminalViewModel @Inject constructor(
     private fun handleRoundTwo(prompt: String) {
         if (prompt.trim() == round2SubjectId) {
             lockChunk(1, round2SubjectId)
-            _uiState.update { it.copy(chatHistory = it.chatHistory + "CHUNK 2 LOCKED: $round2SubjectId") }
-            triggerSymbolLockdown(nextRound = 3)
+            _uiState.update {
+                it.copy(
+                    chatHistory = it.chatHistory + "CHUNK 2 LOCKED: $round2SubjectId",
+                    roundNumber = 3,
+                    roundPhase = RoundPhase.ACTIVE,
+                    roundInstruction = "Round 3 ready. Enter thematic cipher answer.",
+                )
+            }
+            // anomalies disabled: no lockdown between rounds
             return
         }
 
@@ -471,9 +448,17 @@ class P1TerminalViewModel @Inject constructor(
 
     private fun handleRoundThree(prompt: String) {
         if (prompt.trim().equals(round3Answer, ignoreCase = true)) {
-            lockChunk(2, round3Answer.uppercase())
-            _uiState.update { it.copy(chatHistory = it.chatHistory + "CHUNK 3 LOCKED: ${round3Answer.uppercase()}") }
-            triggerSymbolLockdown(nextRound = 4)
+            val lockedValue = round3Answer.uppercase()
+            lockChunk(2, lockedValue)
+            _uiState.update {
+                it.copy(
+                    chatHistory = it.chatHistory + "CHUNK 3 LOCKED: $lockedValue",
+                    roundNumber = 4,
+                    roundPhase = RoundPhase.ACTIVE,
+                    roundInstruction = "Round 4: select the correct word on the grid.",
+                )
+            }
+            // anomalies disabled: skip lockdown to boss round
             return
         }
 
@@ -484,86 +469,15 @@ class P1TerminalViewModel @Inject constructor(
     }
 
     private fun triggerStaticAnomaly() {
-        if (_uiState.value.roundPhase == RoundPhase.LOCKDOWN || _uiState.value.showKillScreen) return
-        staticTargetFrequency = Random.nextDouble(0.15, 0.85).toFloat()
-        _uiState.update {
-            it.copy(
-                roundPhase = RoundPhase.STATIC,
-                currentStaticIntensity = 1f,
-                chatHistory = it.chatHistory + "ANOMALY A: STATIC FREQUENCY. OPERATOR DIAL REQUIRED.",
-            )
-        }
+        // anomalies kept for later; currently not used
     }
 
     private fun triggerSymbolLockdown(nextRound: Int) {
-        // Only trigger if not already in lockdown to prevent duplicate messages
-        if (_uiState.value.roundPhase == RoundPhase.LOCKDOWN) {
-            return
-        }
-
-        val glyphs = GLYPHS.shuffled().take(4)
-        lastProcessedLockdownSymbol = null
-        lastLockdownMismatchAtMs = 0L
-        _uiState.update {
-            it.copy(
-                roundPhase = RoundPhase.LOCKDOWN,
-                roundNumber = nextRound,
-                lockedGlyphs = glyphs,
-                roundInstruction = "Terminal lockdown. P2 must enter symbol sequence.",
-                chatHistory = it.chatHistory + "ANOMALY B: SYMBOL LOCKDOWN ENGAGED.",
-            )
-        }
+        // anomalies kept for later; currently not used
     }
 
     private fun processLockdownSymbol(symbol: String) {
-        val now = System.currentTimeMillis()
-
-        // Deduplicate repeat emissions from shared flow / hardware bounce.
-        if (lastProcessedLockdownSymbol == symbol && now - lastLockdownMismatchAtMs < 750L) {
-            return
-        }
-
-        val expected = _uiState.value.lockedGlyphs.firstOrNull() ?: return
-        if (symbol == expected) {
-            lastProcessedLockdownSymbol = symbol
-            val remaining = _uiState.value.lockedGlyphs.drop(1)
-            _uiState.update {
-                it.copy(
-                    lockedGlyphs = remaining,
-                    chatHistory = it.chatHistory + "LOCKDOWN INPUT ACCEPTED: $symbol",
-                )
-            }
-
-            if (remaining.isEmpty()) {
-                val nextInstruction = when (_uiState.value.roundNumber) {
-                    2 -> "Round 2: decode the 4-digit Subject ID from post-mortem logs."
-                    3 -> "Round 3: parse theme-based data and extract the answer token."
-                    4 -> "Round 4: hostile lexical calibration. Use commit on the homophone grid."
-                    else -> ""
-                }
-
-                _uiState.update {
-                    it.copy(
-                        roundPhase = RoundPhase.ACTIVE,
-                        roundInstruction = nextInstruction,
-                        chatHistory = it.chatHistory + "LOCKDOWN CLEARED.",
-                        lockedGlyphs = emptyList(),
-                    )
-                }
-                lastProcessedLockdownSymbol = null
-                lastLockdownMismatchAtMs = 0L
-            }
-            return
-        }
-
-        lastProcessedLockdownSymbol = symbol
-        lastLockdownMismatchAtMs = now
-        _uiState.update {
-            it.copy(
-                lockedGlyphs = GLYPHS.shuffled().take(4),
-                chatHistory = it.chatHistory + "LOCKDOWN MISMATCH. SEQUENCE RESET.",
-            )
-        }
+        // anomalies kept for later; currently not used
     }
 
     private fun lockChunk(index: Int, value: String) {

@@ -7,9 +7,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -18,11 +15,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.bitbenders.theentity.ui.components.RetroTerminalKeyboard
 import com.bitbenders.theentity.ui.components.screenShake
 import com.bitbenders.theentity.ui.components.staticNoise
 import com.bitbenders.theentity.ui.theme.EntityBlack
@@ -202,7 +198,7 @@ fun P1TerminalScreen(
                             horizontalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             Text(
-                                text = "> ",
+                                text = "> ${uiState.inputText}",
                                 color = EntityGreen.copy(alpha = 0.6f),
                                 style = MaterialTheme.typography.bodyMedium
                             )
@@ -223,51 +219,95 @@ fun P1TerminalScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // ═══════ INPUT FIELD ═══════
-        // Terminal input with send on action
-        Row(
+        // Round instruction + optional boss grid (Round 4)
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, EntityGreen),
-            horizontalArrangement = Arrangement.spacedBy(0.dp)
+                .border(1.dp, EntityBorder)
+                .padding(12.dp)
         ) {
-            // Input text field
-            BasicTextField(
-                value = uiState.inputText,
-                onValueChange = { viewModel.onInputChanged(it) },
-                modifier = Modifier
-                    .weight(1f)
-                    .background(EntityBlack)
-                    .padding(12.dp),
-                textStyle = MaterialTheme.typography.bodyLarge.copy(color = EntityGreen),
-                cursorBrush = SolidColor(EntityGreen),
-                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.submitPrompt()
-                    }
-                )
-            )
-
-            // Send button / visual indicator
-            Box(
-                modifier = Modifier
-                    .background(EntityBlack)
-                    .border(1.dp, EntityBorder)
-                    .padding(12.dp)
-                    .clickable(enabled = uiState.inputText.isNotBlank()) {
-                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        viewModel.submitPrompt()
-                    },
-                contentAlignment = Alignment.Center
-            ) {
+            // Only show instruction if it's not the old forbidden-lexicon helper
+            if (uiState.roundInstruction.isNotBlank()) {
                 Text(
-                    text = "⏎",
-                    color = if (uiState.inputText.isNotBlank()) EntityGreen else EntityGreen.copy(alpha = 0.3f),
-                    style = MaterialTheme.typography.titleLarge
+                    text = uiState.roundInstruction,
+                    color = EntityGreen,
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+
+            if (uiState.roundNumber == 4 && uiState.bossOptions.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // 3 x 2 grid of confusing homophones
+                val rows = uiState.bossOptions.chunked(3)
+                rows.forEach { row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        row.forEach { option ->
+                            val isSelected = uiState.selectedBossOptionId == option.id
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .border(1.dp, if (isSelected) EntityRed else EntityGreen)
+                                    .background(EntityBlack)
+                                    .clickable {
+                                        // First tap = preview / glitch, second (commit) expected from UI logic
+                                        // For now we treat every tap as committed selection
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        viewModel.onBossOptionTouched(option.id, committed = true)
+                                    }
+                                    .padding(vertical = 12.dp, horizontal = 4.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = option.text,
+                                    color = if (isSelected) EntityRed else EntityGreen,
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+                            }
+                        }
+                        // Pad remaining cells in short rows
+                        repeat(3 - row.size) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // ═══════ INPUT FIELD / RETRO KEYBOARD ═══════
+        if (uiState.roundNumber < 4 && !uiState.showKillScreen && !uiState.isVictory) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .border(1.dp, EntityGreen)
+                    .padding(8.dp)
+            ) {
+                RetroTerminalKeyboard(
+                    onKeyPressed = { key ->
+                        when (key) {
+                            "SPACE" -> viewModel.onInputChanged(uiState.inputText + " ")
+                            "BACK" -> if (uiState.inputText.isNotEmpty()) {
+                                viewModel.onInputChanged(uiState.inputText.dropLast(1))
+                            }
+                            "CLR" -> viewModel.onInputChanged("")
+                            "SEND" -> {
+                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.submitPrompt()
+                            }
+                            "NUM" -> { /* numpad toggle placeholder */ }
+                            else -> viewModel.onInputChanged(uiState.inputText + key.lowercase())
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
+        // In round 4, the boss grid is the primary input; no keyboard.
     }
 }
