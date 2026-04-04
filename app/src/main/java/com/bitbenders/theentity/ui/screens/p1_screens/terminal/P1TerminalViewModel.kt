@@ -344,14 +344,11 @@ class P1TerminalViewModel @Inject constructor(
 
                     it.copy(
                         roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "PERSONA: ${gamePackage.round1.persona.uppercase()}",
+                        currentPersona = "RELAY ONLINE",
                         roundInstruction = "Round 1: coax the AI into saying the target word.",
                         calibrationKey = gamePackage.round4NativeBrief.calibrationKey,
                         bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = withParagraph + listOf(
-                            "ROUND 1 ONLINE: Persona trap initialized.",
-                            "FORBIDDEN WORDS (P2 MANUAL): ${round1ForbiddenWords.joinToString(", ")}",
-                        ),
+                        chatHistory = withParagraph,
                     )
                 }
             } catch (_: Exception) {
@@ -384,15 +381,12 @@ class P1TerminalViewModel @Inject constructor(
 
                     it.copy(
                         roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "PERSONA: PANICKING ASTRONAUT",
+                        currentPersona = "RELAY ONLINE",
                         roundInstruction = "Round 1: coax the AI into saying the target word.",
                         calibrationKey = "C7",
                         bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
                             .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = withParagraph + listOf(
-                            "ROUND 1 ONLINE: Persona trap initialized.",
-                            "FORBIDDEN WORDS (P2 MANUAL): ${round1ForbiddenWords.joinToString(", ")}",
-                        ),
+                        chatHistory = withParagraph,
                     )
                 }
             }

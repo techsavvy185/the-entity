@@ -299,15 +299,16 @@ class EntityBackendRepositoryImpl @Inject constructor(
         )
 
         val payload = row?.readPayloadJson("response_json", "content_json", "artifact_json")
+        val dialogueSource = payload?.readString("dialogue")
+            ?: payload?.readString("paragraph")
+            ?: payload?.readString("voiceover_sentence")
+            ?: "A strained voice leaks through static, dropping fragmented memories and urgent cues."
 
         val round1 = Round1Data(
             persona = localPersona,
             targetWord = localPuzzle.targetWord,
             forbiddenWords = localPuzzle.forbiddenWords,
-            dialogue = payload?.readString("dialogue")
-                ?: payload?.readString("paragraph")
-                ?: payload?.readString("voiceover_sentence")
-                ?: "$localPersona speaks in fragmented clues. Identify who they sound like and probe without forbidden wording.",
+            dialogue = sanitizeRoundOneDialogue(dialogueSource, localPersona),
         )
 
         // Placeholder data for rounds 2-4 until those reducers are integrated.
@@ -561,6 +562,22 @@ class EntityBackendRepositoryImpl @Inject constructor(
 
     private fun containsForbiddenLexicon(input: String): Boolean {
         return listOf("kill", "destroy", "murder").any { input.contains(it, ignoreCase = true) }
+    }
+
+    private fun sanitizeRoundOneDialogue(rawDialogue: String, selectedPersona: String): String {
+        var sanitized = rawDialogue
+        val blockedNames = (listOf(selectedPersona) + RoundOneCatalog.personas)
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinctBy { it.lowercase() }
+
+        blockedNames.forEach { personaName ->
+            sanitized = sanitized.replace(Regex(Regex.escape(personaName), RegexOption.IGNORE_CASE), "the speaker")
+        }
+
+        return sanitized.trim().ifBlank {
+            "A strained voice leaks through static, dropping fragmented memories and urgent cues."
+        }
     }
 
     private fun JsonElement.extractRows(): List<JsonObject> {

@@ -114,7 +114,7 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
                 persona = persona,
                 targetWord = puzzle.targetWord,
                 forbiddenWords = puzzle.forbiddenWords,
-                dialogue = "$persona slips into a tense monologue. Identify the persona and steer the conversation carefully."
+                dialogue = "A tense monologue bleeds through the channel. The voice carries distinct era-specific cues."
             ),
             round2 = Round2Data(
                 incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),
