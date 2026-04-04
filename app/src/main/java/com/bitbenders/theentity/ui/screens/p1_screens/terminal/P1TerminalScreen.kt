@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.bitbenders.theentity.ui.components.RetroTerminalKeyboard
 import com.bitbenders.theentity.ui.components.screenShake
 import com.bitbenders.theentity.ui.components.staticNoise
+import com.bitbenders.theentity.ui.effects.crtTerminalEffect
 import com.bitbenders.theentity.ui.theme.EntityBlack
 import com.bitbenders.theentity.ui.theme.EntityBorder
 import com.bitbenders.theentity.ui.theme.EntityGreen
@@ -55,10 +56,10 @@ fun P1TerminalScreen(
             .background(EntityBlack)
             .screenShake(uiState.isShaking)
             .staticNoise(uiState.currentStaticIntensity)
+            .crtTerminalEffect()
             .padding(16.dp)
     ) {
         // ═══════ HEADER ═══════
-        // Status bar with timer and strikes
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -67,55 +68,48 @@ fun P1TerminalScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Timer
+            // Timer (bigger and red)
             Text(
                 text = "T-${uiState.timerString}",
-                color = EntityGreen,
-                style = MaterialTheme.typography.titleLarge
+                color = EntityRed,
+                style = MaterialTheme.typography.headlineMedium
             )
 
-            // Round/Persona info
-            Text(
-                text = uiState.currentPersona,
-                color = EntityGreen,
-                style = MaterialTheme.typography.labelLarge
-            )
+            // Spacer to push strikes to the right while keeping header balanced
+            Spacer(modifier = Modifier.weight(1f))
 
-            // Strikes with color coding
-            Text(
-                text = "R${uiState.roundNumber} ${uiState.roundPhase.name}",
-                color = EntityGreen,
-                style = MaterialTheme.typography.titleLarge
-            )
-
-            Text(
-                text = "STRIKES ${uiState.currentStrikes}/${uiState.maxStrikes}",
-                color = if (uiState.currentStrikes > 0) EntityRed else EntityGreen,
-                style = MaterialTheme.typography.titleLarge
-            )
+            // Strike icons (placeholder bullets we can later replace with animated icons)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                repeat(uiState.maxStrikes) { index ->
+                    val active = index < uiState.currentStrikes
+                    Text(
+                        text = if (active) "●" else "○",
+                        color = if (active) EntityRed else EntityGreen,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+            }
         }
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Cipher slots row
+        // Cipher slots row – four boxes fill the row, no "SLOTS" label
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .border(1.dp, EntityBorder)
                 .padding(12.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "SLOTS:",
-                color = EntityGreen,
-                style = MaterialTheme.typography.labelLarge
-            )
-
-            uiState.cipherSlots.forEachIndexed { _, chunk ->
+            uiState.cipherSlots.forEach { chunk ->
                 Box(
                     modifier = Modifier
-                        .size(60.dp)
+                        .weight(1f)
+                        .height(40.dp)
                         .border(1.dp, EntityGreen)
                         .background(EntityBlack)
                         .padding(4.dp),
@@ -219,6 +213,7 @@ fun P1TerminalScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
+        // Removed round description panel above the keyboard – we go straight to keyboard/boss grid
         // Round instruction + optional boss grid (Round 4)
         Column(
             modifier = Modifier
@@ -226,15 +221,6 @@ fun P1TerminalScreen(
                 .border(1.dp, EntityBorder)
                 .padding(12.dp)
         ) {
-            // Only show instruction if it's not the old forbidden-lexicon helper
-            if (uiState.roundInstruction.isNotBlank()) {
-                Text(
-                    text = uiState.roundInstruction,
-                    color = EntityGreen,
-                    style = MaterialTheme.typography.bodyLarge
-                )
-            }
-
             if (uiState.roundNumber == 4 && uiState.bossOptions.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -300,7 +286,7 @@ fun P1TerminalScreen(
                                 haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                 viewModel.submitPrompt()
                             }
-                            "NUM" -> { /* numpad toggle placeholder */ }
+                            "NUM" -> { /* numpad toggle handled inside keyboard */ }
                             else -> viewModel.onInputChanged(uiState.inputText + key.lowercase())
                         }
                     },

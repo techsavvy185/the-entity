@@ -375,10 +375,8 @@ class P1TerminalViewModel @Inject constructor(
                             )
                         )
                     }
-                    gameEngineRepository.addStrike("Forbidden word in Round 1")
                     return@launch
                 }
-
                 if (result.accepted || prompt.contains(round1TargetWord, ignoreCase = true)) {
                     lockChunk(0, round1TargetWord.uppercase())
                     _uiState.update {
