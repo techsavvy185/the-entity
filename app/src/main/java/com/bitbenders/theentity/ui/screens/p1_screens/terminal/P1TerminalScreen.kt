@@ -15,6 +15,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
@@ -141,18 +142,19 @@ fun P1TerminalScreen(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(uiState.chatHistory) { message ->
+                    val (displayMessage, explicitColor) = parseTerminalColorMarkup(message)
                     // Color different message types
-                    val textColor = when {
-                        message.startsWith("ERR:") -> EntityRed
-                        message.startsWith("[ENTITY_ZERO]:") -> EntityGreen
-                        message.startsWith("[SYSTEM]:") -> EntityRed
-                        message.startsWith(">>>") -> EntityGreen.copy(alpha = 0.8f)
-                        message.startsWith(">") -> EntityGreen.copy(alpha = 0.6f)
+                    val textColor = explicitColor ?: when {
+                        displayMessage.startsWith("ERR:") -> EntityRed
+                        displayMessage.startsWith("[ENTITY_ZERO]:") -> EntityGreen
+                        displayMessage.startsWith("[SYSTEM]:") -> EntityRed
+                        displayMessage.startsWith(">>>") -> EntityGreen.copy(alpha = 0.8f)
+                        displayMessage.startsWith(">") -> EntityGreen.copy(alpha = 0.6f)
                         else -> EntityGreen
                     }
 
                     Text(
-                        text = message,
+                        text = displayMessage,
                         color = textColor,
                         style = MaterialTheme.typography.bodyMedium,
                         modifier = Modifier.padding(vertical = 2.dp)
@@ -296,3 +298,21 @@ fun P1TerminalScreen(
         }
     }
 }
+
+private fun parseTerminalColorMarkup(message: String): Pair<String, Color?> {
+    val match = Regex("^\\[COLOR:([^\\]]+)]\\s*(.+)$", RegexOption.IGNORE_CASE).find(message)
+        ?: return message to null
+    val color = resolveColorToken(match.groupValues[1].trim())
+    return match.groupValues[2] to color
+}
+
+private fun resolveColorToken(token: String): Color? {
+    return when (token.lowercase()) {
+        "red" -> EntityRed
+        "green" -> EntityGreen
+        "yellow", "amber" -> Color(0xFFFFC107)
+        "white" -> Color.White
+        else -> runCatching { Color(android.graphics.Color.parseColor(token)) }.getOrNull()
+    }
+}
+

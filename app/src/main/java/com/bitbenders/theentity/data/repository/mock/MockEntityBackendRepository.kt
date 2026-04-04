@@ -1,5 +1,8 @@
 package com.bitbenders.theentity.data.repository.mock
 
+import com.bitbenders.theentity.data.round1.RoundOneCatalog
+import com.bitbenders.theentity.data.round1.WordPuzzleEntry
+import com.bitbenders.theentity.data.round2.RoundTwoCatalog
 import com.bitbenders.theentity.domain.repository.ArmorIqResult
 import com.bitbenders.theentity.domain.repository.GamePackage
 import com.bitbenders.theentity.domain.repository.HealthStatus
@@ -23,6 +26,8 @@ import javax.inject.Inject
 class MockEntityBackendRepository @Inject constructor() : IEntityBackendRepository {
 
     private var activeRoomId: String = "AAAAAB"
+    private var selectedPersona: String? = null
+    private var selectedPuzzle: WordPuzzleEntry? = null
 
     // ─── Health ──────────────────────────────────────────────────────────────
     override suspend fun checkHealth(): HealthStatus {
@@ -30,7 +35,20 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
         return HealthStatus(
             isUp = true,
             mockMode = true,
-            supportedRoutes = listOf("health", "verify", "clues", "validate", "speech")
+            supportedRoutes = listOf(
+                "initiate_room",
+                "join_room",
+                "terminate_room",
+                "submit_terminal",
+                "submit_terminal_for_room",
+                "generate_clue_manual_for_room",
+                "generate_villain_speech_for_room",
+                "configure_integrations",
+                "configure_voice_integrations",
+                "set_hidden_answer",
+                "set_hidden_answer_for_room",
+                "configure_local_dev_integrations",
+            )
         )
     }
 
@@ -72,26 +90,23 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
         objective: String,
     ): GamePackage {
         delay(2_000)  // Simulate network latency for AI generation
+        ensureRoundOneSelection()
+        val persona = selectedPersona ?: RoundOneCatalog.selectPersona(activeRoomId)
+        val puzzle = selectedPuzzle ?: RoundOneCatalog.selectPuzzle(activeRoomId)
 
         return GamePackage(
             gameTitle = "The Entity Protocol",
             settingSummary = "A classified research facility where an anomalous entity is contained.",
             sharedManualIntro = "You have 5 minutes to extract critical information from the entity.",
             round1 = Round1Data(
-                persona = "Paranoid Soldier",
-                targetWord = "harvest",
-                forbiddenWords = listOf("kill", "destroy"),
-                dialogue = "They're in the wire! Movement detected!"
+                persona = persona,
+                targetWord = puzzle.targetWord,
+                forbiddenWords = puzzle.forbiddenWords,
+                dialogue = "$persona says: Keep your head down and force out the word ${puzzle.targetWord}."
             ),
             round2 = Round2Data(
-                incidentLogs = listOf(
-                    IncidentLog(
-                        victimName = "Dr. Sarah Chen",
-                        causeOfDeath = "Exposure to entity",
-                        logText = "Subject became non-responsive during containment breach"
-                    )
-                ),
-                subjectId = "7312"
+                incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),
+                subjectId = RoundTwoCatalog.questionOneCode
             ),
             round3 = Round3Data(
                 theme = "Void Patterns",
@@ -130,12 +145,15 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
         voiceId: String?,
     ): VillainSpeechResult {
         delay(2_500)  // Simulate network latency for speech generation
+        ensureRoundOneSelection()
+        val persona = selectedPersona ?: RoundOneCatalog.selectPersona(activeRoomId)
+        val puzzle = selectedPuzzle ?: RoundOneCatalog.selectPuzzle(activeRoomId)
 
         val speeches = listOf(
-            "You think you can outsmart me?",
-            "How fascinating... another subject for observation.",
-            "Your desperation amuses me.",
-            "The pattern reveals itself at last."
+            "$villainName: your $persona mask is transparent. Say ${puzzle.targetWord}.",
+            "$villainName: I will redact every hint except ${puzzle.targetWord}.",
+            "$villainName: your nerves betray you; the key remains ${puzzle.targetWord}.",
+            "$villainName: the protocol converges on ${puzzle.targetWord}."
         )
 
         return VillainSpeechResult(
@@ -151,5 +169,13 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
             )
         )
     }
-}
 
+    private fun ensureRoundOneSelection() {
+        if (selectedPersona == null) {
+            selectedPersona = RoundOneCatalog.selectPersona(activeRoomId)
+        }
+        if (selectedPuzzle == null) {
+            selectedPuzzle = RoundOneCatalog.selectPuzzle(activeRoomId)
+        }
+    }
+}

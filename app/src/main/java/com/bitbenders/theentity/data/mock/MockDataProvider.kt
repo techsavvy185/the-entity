@@ -103,20 +103,64 @@ object MockDataProvider {
 
     private val PERSONA_ROTATION = listOf(
         PersonaConfig(
-            targetWord = "harvest",
-            forbiddenWords = listOf("kill", "die", "escape")
+            targetWord = "password",
+            forbiddenWords = listOf("login", "secret", "account", "type", "word")
         ),
         PersonaConfig(
-            targetWord = "lantern",
-            forbiddenWords = listOf("fire", "light", "burn")
+            targetWord = "poison",
+            forbiddenWords = listOf("drink", "toxic", "kill", "sick", "dead")
         ),
         PersonaConfig(
-            targetWord = "anchor",
-            forbiddenWords = listOf("ocean", "sea", "boat")
+            targetWord = "alien",
+            forbiddenWords = listOf("space", "ufo", "planet", "mars", "extraterrestrial")
         ),
         PersonaConfig(
-            targetWord = "verdict",
-            forbiddenWords = listOf("judge", "court", "trial")
+            targetWord = "gold",
+            forbiddenWords = listOf("money", "treasure", "yellow", "coin", "rich")
+        ),
+        PersonaConfig(
+            targetWord = "ghost",
+            forbiddenWords = listOf("haunted", "dead", "spirit", "spooky", "halloween")
+        ),
+        PersonaConfig(
+            targetWord = "freeze",
+            forbiddenWords = listOf("cold", "ice", "winter", "stop", "snow")
+        ),
+        PersonaConfig(
+            targetWord = "explosion",
+            forbiddenWords = listOf("bomb", "bang", "fire", "boom", "blow")
+        ),
+        PersonaConfig(
+            targetWord = "betrayal",
+            forbiddenWords = listOf("traitor", "stab", "back", "friend", "trust")
+        ),
+        PersonaConfig(
+            targetWord = "traffic",
+            forbiddenWords = listOf("cars", "road", "drive", "street", "stuck")
+        ),
+        PersonaConfig(
+            targetWord = "virus",
+            forbiddenWords = listOf("computer", "sick", "bug", "software", "hacker")
+        ),
+        PersonaConfig(
+            targetWord = "rescue",
+            forbiddenWords = listOf("help", "save", "hero", "danger", "trap")
+        ),
+        PersonaConfig(
+            targetWord = "monster",
+            forbiddenWords = listOf("scary", "beast", "creature", "hide", "under")
+        ),
+        PersonaConfig(
+            targetWord = "prison",
+            forbiddenWords = listOf("jail", "cell", "bars", "escape", "cops")
+        ),
+        PersonaConfig(
+            targetWord = "mirror",
+            forbiddenWords = listOf("glass", "look", "reflection", "see", "face")
+        ),
+        PersonaConfig(
+            targetWord = "alarm",
+            forbiddenWords = listOf("clock", "wake", "loud", "ring", "sound")
         ),
     )
 

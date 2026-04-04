@@ -74,4 +74,5 @@ dependencies {
     //retrofit
     implementation(libs.retrofit)
     implementation(libs.retrofit.converter.gson)
+    implementation("com.squareup.retrofit2:converter-scalars:2.11.0")
 }

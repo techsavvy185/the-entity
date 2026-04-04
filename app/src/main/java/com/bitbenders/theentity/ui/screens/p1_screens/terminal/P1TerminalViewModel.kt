@@ -3,6 +3,7 @@ package com.bitbenders.theentity.ui.screens.p1_screens.terminal
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.bitbenders.theentity.domain.models.CipherChunk
+import com.bitbenders.theentity.domain.repository.IncidentLog
 import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
 import com.bitbenders.theentity.domain.repository.IGameEngineRepository
 import com.bitbenders.theentity.domain.usecases.EvaluatePlayerInputUseCase
@@ -31,6 +32,8 @@ class P1TerminalViewModel @Inject constructor(
     private var round1TargetWord: String = ""
     private var round1ForbiddenWords: List<String> = emptyList()
     private var round2SubjectId: String = ""
+    private var round2IncidentLogs: List<IncidentLog> = emptyList()
+    private var round2LogsPublished: Boolean = false
     private var round3Answer: String = ""
     private var staticTargetFrequency: Float = 0.5f
     private var correctBossWord: String = ""
@@ -115,6 +118,7 @@ class P1TerminalViewModel @Inject constructor(
                         chatHistory = listOf(
                             "AI BOOT SEQUENCE INITIATED...",
                             if (health.mockMode) "[MOCK MODE ACTIVE]" else "[LIVE MODE]",
+                            it.roundInstruction,
                             "AWAITING INPUT.",
                         )
                     )
@@ -142,6 +146,10 @@ class P1TerminalViewModel @Inject constructor(
                     )
                 }
 
+                // Load round content after boot history is present so the paragraph can be inserted
+                // immediately before the "AWAITING INPUT." marker.
+                bootstrapRoundData()
+
             } catch (_: Exception) {
                 _uiState.update {
                     it.copy(
@@ -156,8 +164,6 @@ class P1TerminalViewModel @Inject constructor(
         }
 
         // anomalies temporarily disabled
-
-        bootstrapRoundData()
     }
 
     /**
@@ -220,10 +226,10 @@ class P1TerminalViewModel @Inject constructor(
      */
     private fun getPersonaOpening(targetWord: String): String {
         return when (targetWord.lowercase()) {
-            "harvest" -> "They're in the wire! Movement at 0200! Did you hear that? I need a sitrep, now!"
-            "lantern" -> "The rain hasn't stopped for days. The dame walked into my office looking like trouble, but right now, you're the one on the radio."
-            "anchor" -> "Radio crackles with static. We've drifted too far. I need a fix, a reference point... something solid."
-            "verdict" -> "The courtroom fell silent. Now it's just us on this channel. What's your final statement?"
+            "password" -> "Security breach in progress. I need the access phrase before the lockout timer expires."
+            "poison" -> "Vials are mixed and labels are gone. One wrong call and this lab goes dark."
+            "alien" -> "Unknown signal pattern incoming. It isn't human, and it keeps repeating."
+            "gold" -> "The cache is tagged and buried. Give me the marker word and we move now."
             else -> "Entity consciousness detected. Awaiting input."
         }
     }
@@ -317,6 +323,8 @@ class P1TerminalViewModel @Inject constructor(
                 round1TargetWord = gamePackage.round1.targetWord
                 round1ForbiddenWords = gamePackage.round1.forbiddenWords
                 round2SubjectId = gamePackage.round2.subjectId
+                round2IncidentLogs = gamePackage.round2.incidentLogs
+                round2LogsPublished = false
                 round3Answer = gamePackage.round3.answer
                 correctBossWord = gamePackage.round4NativeBrief.correctWord
 
@@ -325,34 +333,65 @@ class P1TerminalViewModel @Inject constructor(
                 }
 
                 _uiState.update {
-                    it.copy(
-                        roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "PERSONA: ${gamePackage.round1.persona.uppercase()}",
-                        roundInstruction = "Round 1: coax the AI into saying the target word.",
-                        calibrationKey = gamePackage.round4NativeBrief.calibrationKey,
-                        bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = it.chatHistory + listOf(
-                            "ROUND 1 ONLINE: Persona trap initialized.",
-                            "FORBIDDEN WORDS (P2 MANUAL): ${round1ForbiddenWords.joinToString(", ")}",
+                    val updatedSlots = it.cipherSlots.toMutableList().apply {
+                        this[0] = CipherChunk(id = 1, textValue = round1TargetWord.uppercase(), isLocked = true)
+                    }
+                    val withRound2Logs = appendRound2IncidentLogsIfNeeded(
+                        it.chatHistory + listOf(
+                            "ROUND 1 OVERRIDDEN: auto-completed for testing.",
+                            "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
                         ),
+                    )
+
+                    it.copy(
+                        roundNumber = 2,
+                        roundPhase = RoundPhase.ACTIVE,
+                        currentPersona = "ROUND 2 ACTIVE",
+                        roundInstruction = "Round 2 ready. Enter Subject ID.",
+                        calibrationKey = gamePackage.round4NativeBrief.calibrationKey,
+                        cipherSlots = updatedSlots,
+                        bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
+                        chatHistory = withRound2Logs,
                     )
                 }
             } catch (_: Exception) {
-                round1TargetWord = "harvest"
-                round1ForbiddenWords = listOf("kill", "free")
-                round2SubjectId = "7312"
+                round1TargetWord = "PASSWORD"
+                round1ForbiddenWords = listOf("Login", "Secret", "Account", "Type", "Word")
+                round2SubjectId = "9152"
+                round2IncidentLogs = listOf(
+                    IncidentLog(
+                        victimName = "PM-001 | Dr. Aris | 02:14",
+                        causeOfDeath = "Neural link forcefully severed from cortex",
+                        logText = "Subject found deceased at terminal. Large amounts of blood pooled near the primary console. " +
+                            "Audio logs recorded the subject screaming for exactly 42 seconds before silence. " +
+                            "Recovery team confirmed the containment door was locked from the inside.",
+                    ),
+                )
+                round2LogsPublished = false
                 round3Answer = "VOID"
                 correctBossWord = "WRITE"
 
                 _uiState.update {
+                    val updatedSlots = it.cipherSlots.toMutableList().apply {
+                        this[0] = CipherChunk(id = 1, textValue = round1TargetWord.uppercase(), isLocked = true)
+                    }
+                    val withRound2Logs = appendRound2IncidentLogsIfNeeded(
+                        it.chatHistory + listOf(
+                            "ROUND 1 OVERRIDDEN: auto-completed for testing.",
+                            "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                        ),
+                    )
+
                     it.copy(
+                        roundNumber = 2,
                         roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "PERSONA: PARANOID SOLDIER",
-                        roundInstruction = "Round 1: coax the AI into saying the target word.",
+                        currentPersona = "ROUND 2 ACTIVE",
+                        roundInstruction = "Round 2 ready. Enter Subject ID.",
                         calibrationKey = "C7",
+                        cipherSlots = updatedSlots,
                         bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
                             .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = it.chatHistory + "Fallback round package loaded due to relay failure.",
+                        chatHistory = withRound2Logs,
                     )
                 }
             }
@@ -380,8 +419,11 @@ class P1TerminalViewModel @Inject constructor(
                 if (result.accepted || prompt.contains(round1TargetWord, ignoreCase = true)) {
                     lockChunk(0, round1TargetWord.uppercase())
                     _uiState.update {
+                        val withRound2Logs = appendRound2IncidentLogsIfNeeded(
+                            it.chatHistory + "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                        )
                         it.copy(
-                            chatHistory = it.chatHistory + "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                            chatHistory = withRound2Logs,
                             roundNumber = 2,
                             roundPhase = RoundPhase.ACTIVE,
                             roundInstruction = "Round 2 ready. Enter Subject ID.",
@@ -484,6 +526,51 @@ class P1TerminalViewModel @Inject constructor(
             mutable[index] = CipherChunk(id = index + 1, textValue = value, isLocked = true)
             state.copy(cipherSlots = mutable)
         }
+    }
+
+    private fun appendRound2IncidentLogsIfNeeded(history: List<String>): List<String> {
+        if (round2LogsPublished || round2IncidentLogs.isEmpty()) return history
+        round2LogsPublished = true
+
+        val logLines = mutableListOf("ROUND 2 INCIDENT LOGS:")
+        round2IncidentLogs.forEachIndexed { index, log ->
+            logLines += formatRound2Field("LOG ${index + 1}", log.victimName)
+            logLines += formatRound2Field("CAUSE", log.causeOfDeath)
+            logLines += formatRound2Field("DETAILS", log.logText)
+        }
+        return history + logLines
+    }
+
+    private fun formatRound2Field(label: String, rawValue: String): String {
+        val (text, colorToken) = parseHardcodedRound2Color(rawValue)
+        val body = "$label: $text"
+        return if (colorToken.isNullOrBlank()) body else "[COLOR:$colorToken]$body"
+    }
+
+    private fun parseHardcodedRound2Color(rawValue: String): Pair<String, String?> {
+        val trimmed = rawValue.trim()
+
+        // Supported hardcoded formats:
+        // 1) [red]Some text
+        // 2) Some text|color=red
+        // 3) Some text|#FF5C5C
+        val bracketMatch = Regex("^\\[([^\\]]+)]\\s*(.+)$").find(trimmed)
+        if (bracketMatch != null) {
+            return bracketMatch.groupValues[2].trim() to bracketMatch.groupValues[1].trim()
+        }
+
+        val explicitColorMatch = Regex("^(.+?)\\|\\s*color\\s*=\\s*([^|]+)$", RegexOption.IGNORE_CASE)
+            .find(trimmed)
+        if (explicitColorMatch != null) {
+            return explicitColorMatch.groupValues[1].trim() to explicitColorMatch.groupValues[2].trim()
+        }
+
+        val shortColorMatch = Regex("^(.+?)\\|\\s*(#?[A-Za-z0-9]+)$").find(trimmed)
+        if (shortColorMatch != null) {
+            return shortColorMatch.groupValues[1].trim() to shortColorMatch.groupValues[2].trim()
+        }
+
+        return trimmed to null
     }
 
     private fun onGameFailed(message: String) {

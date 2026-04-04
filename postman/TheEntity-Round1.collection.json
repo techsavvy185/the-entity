@@ -1,0 +1,239 @@
+{
+  "info": {
+    "name": "The Entity - Maincloud Round Flow",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 - Initiate Room",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/call/initiate_room",
+        "body": {
+          "mode": "raw",
+          "raw": "[{\"some\":\"The Entity\"}]"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const token = pm.response.headers.get('spacetime-identity-token');",
+              "if (token) pm.environment.set('player1_token', token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Read Latest Room ID",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/plain" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/sql",
+        "body": {
+          "mode": "raw",
+          "raw": "select * from game_room order by created_at desc limit 1"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const data = pm.response.json();",
+              "const row = data?.[0]?.rows?.[0];",
+              "if (row && row[0]) pm.environment.set('room_id', row[0]);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Join Room (Player 2)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": "{{base_url}}/call/join_room",
+        "body": {
+          "mode": "raw",
+          "raw": "[\"{{room_id}}\"]"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const token = pm.response.headers.get('spacetime-identity-token');",
+              "if (token) pm.environment.set('player2_token', token);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Read Room Status",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/plain" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/sql",
+        "body": {
+          "mode": "raw",
+          "raw": "select * from game_room where room_id = '{{room_id}}'"
+        }
+      }
+    },
+    {
+      "name": "05 - Read Game State",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/plain" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/sql",
+        "body": {
+          "mode": "raw",
+          "raw": "select * from game_state order by updated_at desc limit 10"
+        }
+      }
+    },
+    {
+      "name": "06 - Generate Clue Manual Round 1",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/call/generate_clue_manual_for_room",
+        "body": {
+          "mode": "raw",
+          "raw": "[\"{{room_id}}\",\"round_1\",\"{\\\"requested_persona\\\":\\\"1920s Detective\\\"}\",\"\"]"
+        }
+      }
+    },
+    {
+      "name": "07 - Read Clue Artifact",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/plain" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/sql",
+        "body": {
+          "mode": "raw",
+          "raw": "select * from round_content_artifact where room_id = '{{room_id}}'"
+        }
+      }
+    },
+    {
+      "name": "08 - Generate Villain Speech",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/call/generate_villain_speech_for_room",
+        "body": {
+          "mode": "raw",
+          "raw": "[\"{{room_id}}\",\"{\\\"round_key\\\":\\\"round_1\\\",\\\"villain_name\\\":\\\"The Entity\\\",\\\"scene\\\":\\\"first clue reveal\\\",\\\"tone\\\":\\\"cold and theatrical\\\",\\\"synthesize_audio\\\":false,\\\"clue_contexts\\\":[{\\\"cue_id\\\":\\\"r1_c1\\\",\\\"clue_text\\\":\\\"First clue text\\\"}],\\\"round_output\\\":{\\\"persona_name\\\":\\\"1920s Detective\\\"}}\"]"
+        }
+      }
+    },
+    {
+      "name": "09 - Read Villain Speech Artifact",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/plain" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/sql",
+        "body": {
+          "mode": "raw",
+          "raw": "select * from villain_speech_artifact where room_id = '{{room_id}}'"
+        }
+      }
+    },
+    {
+      "name": "10 - Set Hidden Answer For Room (Owner)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{owner_token}}" }
+        ],
+        "url": "{{base_url}}/call/set_hidden_answer_for_room",
+        "body": {
+          "mode": "raw",
+          "raw": "[\"{{room_id}}\",\"glass pilgrims\"]"
+        }
+      }
+    },
+    {
+      "name": "11 - Submit Terminal For Room",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/call/submit_terminal_for_room",
+        "body": {
+          "mode": "raw",
+          "raw": "[\"{{room_id}}\",\"submit glass pilgrims\"]"
+        }
+      }
+    },
+    {
+      "name": "12 - Read Game State After Terminal",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "text/plain" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/sql",
+        "body": {
+          "mode": "raw",
+          "raw": "select * from game_state order by updated_at desc limit 10"
+        }
+      }
+    },
+    {
+      "name": "13 - Terminate Room",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "Authorization", "value": "Bearer {{player1_token}}" }
+        ],
+        "url": "{{base_url}}/call/terminate_room",
+        "body": {
+          "mode": "raw",
+          "raw": "[\"{{room_id}}\"]"
+        }
+      }
+    }
+  ]
+}
+
