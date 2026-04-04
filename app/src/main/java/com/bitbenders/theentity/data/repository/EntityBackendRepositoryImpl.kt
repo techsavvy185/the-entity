@@ -1,11 +1,6 @@
 package com.bitbenders.theentity.data.repository
 
 import com.bitbenders.theentity.data.remote.api.EntityBackendApi
-import com.bitbenders.theentity.data.remote.dto.ArmorIqContextDto
-import com.bitbenders.theentity.data.remote.dto.ArmorIqVerifyRequestDto
-import com.bitbenders.theentity.data.remote.dto.ClueGeneratorRequestDto
-import com.bitbenders.theentity.data.remote.dto.TerminalValidatorRequestDto
-import com.bitbenders.theentity.data.remote.dto.VillainSpeechRequestDto
 import com.bitbenders.theentity.domain.repository.ArmorIqResult
 import com.bitbenders.theentity.domain.repository.GamePackage
 import com.bitbenders.theentity.domain.repository.HealthStatus
@@ -15,38 +10,73 @@ import com.bitbenders.theentity.domain.repository.Round1Data
 import com.bitbenders.theentity.domain.repository.Round2Data
 import com.bitbenders.theentity.domain.repository.Round3Data
 import com.bitbenders.theentity.domain.repository.Round4NativeBriefData
+import com.bitbenders.theentity.domain.repository.RoomSession
 import com.bitbenders.theentity.domain.repository.SpeechCue
 import com.bitbenders.theentity.domain.repository.TerminalValidation
 import com.bitbenders.theentity.domain.repository.VillainSpeechResult
+import com.google.gson.Gson
+import com.google.gson.JsonArray
+import com.google.gson.JsonElement
+import com.google.gson.JsonNull
+import com.google.gson.JsonObject
 import javax.inject.Inject
+import kotlinx.coroutines.delay
+import retrofit2.Response
 
 /**
- * Production implementation of [IEntityBackendRepository].
+ * Production repository using SpacetimeDB reducers.
  *
- * Delegates every call to the Retrofit [EntityBackendApi] and maps
- * DTOs → domain models. Throws on HTTP errors so callers can
- * handle failures in the ViewModel / UseCase layer.
+ * Scope intentionally limited to round 1 real reducers for now.
  */
 class EntityBackendRepositoryImpl @Inject constructor(
     private val api: EntityBackendApi,
 ) : IEntityBackendRepository {
 
+    private val gson = Gson()
+    private var identityToken: String? = null
+    private var activeRoomId: String? = null
+    private var lastTerminalSnapshot: TerminalSnapshot? = null
+
     // ─── Health ──────────────────────────────────────────────────────────────
 
     override suspend fun checkHealth(): HealthStatus {
-        val response = api.getHealth()
-        val body = response.body()
-            ?: throw ApiException(response.code(), "Health check failed: empty body")
-
-        if (!response.isSuccessful) {
-            throw ApiException(response.code(), "Health check failed")
-        }
+        val isUp = runCatching {
+            queryRows("select * from game_room limit 1")
+        }.isSuccess
 
         return HealthStatus(
-            isUp = true,
-            mockMode = body.mockMode,
-            supportedRoutes = body.supportedRoutes,
+            isUp = isUp,
+            mockMode = false,
+            supportedRoutes = listOf(
+                "initiate_room",
+                "join_room",
+                "terminate_room",
+                "submit_terminal_for_room",
+                "generate_clue_manual_for_room",
+                "generate_villain_speech_for_room",
+            ),
         )
+    }
+
+    override suspend fun initiateRoom(seedLabel: String): RoomSession {
+        callReducer("initiate_room", listOf(mapOf("some" to seedLabel)))
+
+        val roomTicket = awaitSingleRow(
+            "select * from room_ticket order by id desc limit 1",
+            timeoutMs = 5_000L,
+        )
+
+        val resolved = roomTicket?.readString("room_id", "roomId", "ticket", "code")
+            ?: throw ApiException(500, "Failed to resolve room id from room_ticket")
+
+        activeRoomId = resolved
+        return RoomSession(roomId = resolved)
+    }
+
+    override suspend fun joinRoom(roomId: String): RoomSession {
+        callReducer("join_room", listOf(roomId))
+        activeRoomId = roomId
+        return RoomSession(roomId = roomId)
     }
 
     // ─── ArmorIQ ─────────────────────────────────────────────────────────────
@@ -55,22 +85,37 @@ class EntityBackendRepositoryImpl @Inject constructor(
         playerInput: String,
         hiddenAnswer: String,
     ): ArmorIqResult {
-        val request = ArmorIqVerifyRequestDto(
-            playerInput = playerInput,
-            context = ArmorIqContextDto(hiddenAnswer = hiddenAnswer),
+        val roomId = ensureRoom()
+        callReducer("submit_terminal_for_room", listOf(roomId, playerInput))
+
+        val row = awaitSingleRow(
+            "select * from game_state where room_id = '$roomId' order by id desc limit 1",
+            timeoutMs = 8_000L,
         )
 
-        val response = api.verifyArmorIq(request)
-        val body = response.body()
-            ?: throw ApiException(response.code(), "ArmorIQ verify failed: empty body")
+        val allowed = row?.readBoolean("armoriq_allowed", "allowed", "input_allowed")
+            ?: !containsForbiddenLexicon(playerInput)
 
-        if (!response.isSuccessful) {
-            throw ApiException(response.code(), "ArmorIQ verify failed")
-        }
+        val success = row?.readBoolean("validator_success", "terminal_success", "gemini_success")
+            ?: playerInput.contains(hiddenAnswer, ignoreCase = true)
+
+        val reason = row?.readString(
+            "validator_reason",
+            "terminal_reason",
+            "block_reason",
+            "status_message",
+        ) ?: if (success) "Input accepted" else "Target pattern not detected"
+
+        lastTerminalSnapshot = TerminalSnapshot(
+            input = playerInput,
+            roomId = roomId,
+            success = success,
+            reason = reason,
+        )
 
         return ArmorIqResult(
-            allowed = body.allowed,
-            blockReason = body.blockReason,
+            allowed = allowed,
+            blockReason = if (allowed) null else reason,
         )
     }
 
@@ -83,52 +128,57 @@ class EntityBackendRepositoryImpl @Inject constructor(
         villainName: String,
         objective: String,
     ): GamePackage {
-        val request = ClueGeneratorRequestDto(
-            setting = setting,
-            difficulty = difficulty,
-            theme = theme,
-            villainName = villainName,
-            objective = objective,
+        val roomId = ensureRoom()
+
+        // Round-1 only real reducer implementation.
+        val requestPayload = gson.toJson(mapOf("requested_persona" to "1920s Detective"))
+        callReducer(
+            "generate_clue_manual_for_room",
+            listOf(roomId, "round_1", requestPayload, ""),
         )
 
-        val response = api.generateClues(request)
-        val body = response.body()
-            ?: throw ApiException(response.code(), "Clue generation failed: empty body")
+        val row = awaitSingleRow(
+            "select * from round_content_artifact where room_id = '$roomId' and round_key = 'round_1' order by id desc limit 1",
+            timeoutMs = 15_000L,
+        )
 
-        if (!response.isSuccessful) {
-            throw ApiException(response.code(), "Clue generation failed")
-        }
+        val payload = row?.readPayloadJson("response_json", "content_json", "artifact_json")
 
+        val round1 = Round1Data(
+            persona = payload?.readString("persona") ?: "1920s Detective",
+            targetWord = payload?.readString("target_word") ?: "harvest",
+            forbiddenWords = payload?.readStringList("forbidden_words").orEmpty().ifEmpty {
+                listOf("kill", "destroy")
+            },
+            dialogue = payload?.readString("dialogue") ?: "Clockwork lies unravel in static.",
+        )
+
+        // Placeholder data for rounds 2-4 until those reducers are integrated.
         return GamePackage(
-            gameTitle = body.gameTitle,
-            settingSummary = body.settingSummary,
-            sharedManualIntro = body.sharedManualIntro,
-            round1 = Round1Data(
-                persona = body.round1.persona,
-                targetWord = body.round1.targetWord,
-                forbiddenWords = body.round1.forbiddenWords,
-                dialogue = body.round1.dialogue,
-            ),
+            gameTitle = payload?.readString("game_title") ?: "The Entity",
+            settingSummary = payload?.readString("setting_summary") ?: setting,
+            sharedManualIntro = payload?.readString("shared_manual_intro") ?: objective,
+            round1 = round1,
             round2 = Round2Data(
-                incidentLogs = body.round2.incidentLogs.map { log ->
+                incidentLogs = listOf(
                     IncidentLog(
-                        victimName = log.victimName,
-                        causeOfDeath = log.causeOfDeath,
-                        logText = log.logText,
-                    )
-                },
-                subjectId = body.round2.subjectId,
+                        victimName = "Unknown",
+                        causeOfDeath = "Classified",
+                        logText = "Round 2 reducer not integrated yet.",
+                    ),
+                ),
+                subjectId = "0000",
             ),
             round3 = Round3Data(
-                theme = body.round3.theme,
-                cipherText = body.round3.cipherText,
-                decodingRule = body.round3.decodingRule,
-                answer = body.round3.answer,
+                theme = theme,
+                cipherText = "N/A",
+                decodingRule = "Round 3 reducer not integrated yet.",
+                answer = "N/A",
             ),
             round4NativeBrief = Round4NativeBriefData(
-                homophones = body.round4NativeBrief.homophones,
-                calibrationKey = body.round4NativeBrief.calibrationKey,
-                correctWord = body.round4NativeBrief.correctWord,
+                homophones = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE"),
+                calibrationKey = "C7",
+                correctWord = "WRITE",
             ),
         )
     }
@@ -139,22 +189,22 @@ class EntityBackendRepositoryImpl @Inject constructor(
         playerInput: String,
         hiddenAnswer: String,
     ): TerminalValidation {
-        val request = TerminalValidatorRequestDto(
-            playerInput = playerInput,
-            hiddenAnswer = hiddenAnswer,
-        )
+        val roomId = ensureRoom()
+        val cached = lastTerminalSnapshot
+        if (cached != null && cached.input == playerInput && cached.roomId == roomId) {
+            return TerminalValidation(success = cached.success, reason = cached.reason)
+        }
 
-        val response = api.validateTerminal(request)
-        val body = response.body()
-            ?: throw ApiException(response.code(), "Terminal validation failed: empty body")
-
-        if (!response.isSuccessful) {
-            throw ApiException(response.code(), "Terminal validation failed")
+        // Fallback if verify was skipped.
+        val allowed = verifyPlayerInput(playerInput, hiddenAnswer).allowed
+        val snapshot = lastTerminalSnapshot
+        if (!allowed) {
+            return TerminalValidation(success = false, reason = snapshot?.reason ?: "Blocked by ArmorIQ")
         }
 
         return TerminalValidation(
-            success = body.success,
-            reason = body.reason,
+            success = snapshot?.success ?: playerInput.contains(hiddenAnswer, ignoreCase = true),
+            reason = snapshot?.reason ?: "Validation completed",
         )
     }
 
@@ -167,35 +217,166 @@ class EntityBackendRepositoryImpl @Inject constructor(
         selectedCueId: String?,
         voiceId: String?,
     ): VillainSpeechResult {
-        val request = VillainSpeechRequestDto(
-            villainName = villainName,
-            scene = scene,
-            tone = tone,
-            selectedCueId = selectedCueId,
-            voiceId = voiceId,
+        val roomId = ensureRoom()
+
+        val payload = gson.toJson(
+            mapOf(
+                "round_key" to "round_1",
+                "villain_name" to villainName,
+                "scene" to scene,
+                "tone" to tone,
+                "selected_cue_id" to selectedCueId,
+                "voice_id" to voiceId,
+                "synthesize_audio" to true,
+                "clue_contexts" to listOf(
+                    mapOf("cue_id" to "r1_c1", "clue_text" to "first clue"),
+                ),
+            ),
         )
 
-        val response = api.generateVillainSpeech(request)
-        val body = response.body()
-            ?: throw ApiException(response.code(), "Villain speech generation failed: empty body")
+        callReducer("generate_villain_speech_for_room", listOf(roomId, payload))
 
-        if (!response.isSuccessful) {
-            throw ApiException(response.code(), "Villain speech generation failed")
-        }
+        val row = awaitSingleRow(
+            "select * from villain_speech_artifact where room_id = '$roomId' order by id desc limit 1",
+            timeoutMs = 15_000L,
+        )
+        val data = row?.readPayloadJson("response_json", "payload_json", "artifact_json")
+
+        val cues = data?.readObjectArray("speech_cues")
+            ?.map { cue -> SpeechCue(cue.readString("cue_id") ?: "cue_1", cue.readString("text") ?: "...") }
+            .orEmpty()
 
         return VillainSpeechResult(
-            speechCues = body.speechCues.map { cue ->
-                SpeechCue(cueId = cue.cueId, text = cue.text)
+            speechCues = cues.ifEmpty {
+                listOf(SpeechCue("cue_1", "The Entity watches in silence."))
             },
-            selectedCueId = body.selectedCueId,
-            audioBase64 = body.audioBase64,
-            mimeType = body.mimeType,
-            ttsProvider = body.ttsProvider,
+            selectedCueId = data?.readString("selected_cue_id") ?: selectedCueId ?: "cue_1",
+            audioBase64 = data?.readString("audio_base64"),
+            mimeType = data?.readString("mime_type"),
+            ttsProvider = "elevenlabs",
         )
+    }
+
+    private suspend fun ensureRoom(): String {
+        activeRoomId?.let { return it }
+        return initiateRoom().roomId
+    }
+
+    private suspend fun callReducer(reducerName: String, args: List<Any?>): JsonElement {
+        val jsonArgs = JsonArray().apply {
+            args.forEach { add(gson.toJsonTree(it)) }
+        }
+
+        val response = api.callReducer(
+            reducerName = reducerName,
+            authorization = authHeader(),
+            args = jsonArgs,
+        )
+        captureIdentity(response)
+
+        if (!response.isSuccessful) {
+            throw ApiException(response.code(), "Reducer call failed: $reducerName")
+        }
+
+        return response.body() ?: JsonNull.INSTANCE
+    }
+
+    private suspend fun queryRows(sql: String): List<JsonObject> {
+        val response = api.querySql(authHeader(), sql)
+        captureIdentity(response)
+
+        if (!response.isSuccessful) {
+            throw ApiException(response.code(), "SQL query failed")
+        }
+
+        return (response.body() ?: JsonNull.INSTANCE).extractRows()
+    }
+
+    private suspend fun awaitSingleRow(sql: String, timeoutMs: Long): JsonObject? {
+        val started = System.currentTimeMillis()
+        while (System.currentTimeMillis() - started < timeoutMs) {
+            val row = queryRows(sql).firstOrNull()
+            if (row != null) {
+                val status = row.readString("status", "gemini_status", "tts_status")?.lowercase()
+                if (status == null || status !in PENDING) return row
+            }
+            delay(400)
+        }
+        return queryRows(sql).firstOrNull()
+    }
+
+    private fun authHeader(): String? = identityToken?.let { "Bearer $it" }
+
+    private fun captureIdentity(response: Response<*>) {
+        val token = response.headers()[IDENTITY_HEADER]
+        if (!token.isNullOrBlank()) identityToken = token
+    }
+
+    private fun containsForbiddenLexicon(input: String): Boolean {
+        return listOf("kill", "destroy", "murder").any { input.contains(it, ignoreCase = true) }
+    }
+
+    private fun JsonElement.extractRows(): List<JsonObject> {
+        if (this is JsonArray) return mapNotNull { it as? JsonObject }
+        if (this !is JsonObject) return emptyList()
+
+        val candidates = listOf("rows", "data", "result", "records")
+        val rows = candidates.firstNotNullOfOrNull { key -> get(key) }
+        return if (rows is JsonArray) rows.mapNotNull { it as? JsonObject } else emptyList()
+    }
+
+    private fun JsonObject.readString(vararg keys: String): String? {
+        keys.forEach { key ->
+            val value = get(key) ?: return@forEach
+            if (!value.isJsonNull && value.isJsonPrimitive) return value.asString
+        }
+        return null
+    }
+
+    private fun JsonObject.readBoolean(vararg keys: String): Boolean? {
+        keys.forEach { key ->
+            val value = get(key) ?: return@forEach
+            if (!value.isJsonNull && value.isJsonPrimitive) {
+                return runCatching { value.asBoolean }.getOrNull()
+            }
+        }
+        return null
+    }
+
+    private fun JsonObject.readStringList(key: String): List<String>? {
+        val arr = get(key) as? JsonArray ?: return null
+        return arr.mapNotNull { if (it.isJsonPrimitive) it.asString else null }
+    }
+
+    private fun JsonObject.readObjectArray(key: String): List<JsonObject>? {
+        val arr = get(key) as? JsonArray ?: return null
+        return arr.mapNotNull { it as? JsonObject }
+    }
+
+    private fun JsonObject.readPayloadJson(vararg keys: String): JsonObject? {
+        keys.forEach { key ->
+            val value = get(key) ?: return@forEach
+            if (value is JsonObject) return value
+            if (value.isJsonPrimitive && value.asJsonPrimitive.isString) {
+                runCatching { gson.fromJson(value.asString, JsonObject::class.java) }
+                    .getOrNull()
+                    ?.let { return it }
+            }
+        }
+        return null
+    }
+
+    companion object {
+        private const val IDENTITY_HEADER = "spacetime-identity-token"
+        private val PENDING = setOf("pending", "pendinggemini", "pendingtts")
     }
 }
 
-/**
- * Thrown when the relay returns a non-successful HTTP status.
- */
+private data class TerminalSnapshot(
+    val input: String,
+    val roomId: String,
+    val success: Boolean,
+    val reason: String,
+)
+
 class ApiException(val httpCode: Int, message: String) : Exception("[$httpCode] $message")

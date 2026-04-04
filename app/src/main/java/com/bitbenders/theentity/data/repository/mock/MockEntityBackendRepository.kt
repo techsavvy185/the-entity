@@ -9,6 +9,7 @@ import com.bitbenders.theentity.domain.repository.Round1Data
 import com.bitbenders.theentity.domain.repository.Round2Data
 import com.bitbenders.theentity.domain.repository.Round3Data
 import com.bitbenders.theentity.domain.repository.Round4NativeBriefData
+import com.bitbenders.theentity.domain.repository.RoomSession
 import com.bitbenders.theentity.domain.repository.SpeechCue
 import com.bitbenders.theentity.domain.repository.TerminalValidation
 import com.bitbenders.theentity.domain.repository.VillainSpeechResult
@@ -21,6 +22,8 @@ import javax.inject.Inject
  */
 class MockEntityBackendRepository @Inject constructor() : IEntityBackendRepository {
 
+    private var activeRoomId: String = "AAAAAB"
+
     // ─── Health ──────────────────────────────────────────────────────────────
     override suspend fun checkHealth(): HealthStatus {
         delay(500)  // Simulate network latency
@@ -29,6 +32,18 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
             mockMode = true,
             supportedRoutes = listOf("health", "verify", "clues", "validate", "speech")
         )
+    }
+
+    override suspend fun initiateRoom(seedLabel: String): RoomSession {
+        delay(300)
+        activeRoomId = "AAAAAB"
+        return RoomSession(roomId = activeRoomId)
+    }
+
+    override suspend fun joinRoom(roomId: String): RoomSession {
+        delay(250)
+        activeRoomId = roomId
+        return RoomSession(roomId = activeRoomId)
     }
 
     // ─── ArmorIQ ──────────────────────────────────────────────────────────────

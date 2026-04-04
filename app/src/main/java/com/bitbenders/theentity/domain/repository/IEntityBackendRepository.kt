@@ -14,6 +14,11 @@ interface IEntityBackendRepository {
 
     suspend fun checkHealth(): HealthStatus
 
+    // ─── Room Lifecycle ─────────────────────────────────────────────────────
+
+    suspend fun initiateRoom(seedLabel: String = "The Entity"): RoomSession
+    suspend fun joinRoom(roomId: String): RoomSession
+
     // ─── ArmorIQ ─────────────────────────────────────────────────────────────
 
     suspend fun verifyPlayerInput(
@@ -55,6 +60,10 @@ data class HealthStatus(
     val isUp: Boolean,
     val mockMode: Boolean,
     val supportedRoutes: List<String>,
+)
+
+data class RoomSession(
+    val roomId: String,
 )
 
 data class ArmorIqResult(
