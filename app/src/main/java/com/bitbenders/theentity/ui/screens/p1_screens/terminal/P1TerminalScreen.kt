@@ -294,6 +294,5 @@ fun P1TerminalScreen(
                 )
             }
         }
-        // In round 4, the boss grid is the primary input; no keyboard.
     }
 }

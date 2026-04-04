@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+
 const val CRTCurvatureShader = """
     uniform float2 resolution;
     uniform float time;
@@ -74,6 +75,53 @@ const val CRTCurvatureShader = """
     }
 """
 
+const val TACTICAL_CRT_SHADER = """
+    // The UI layer passed in by Jetpack Compose
+    uniform shader composable;
+    // The size of the composable area
+    uniform float2 size;
+    
+    half4 main(float2 fragCoord) {
+        // Normalize coordinates from 0.0 to 1.0
+        vec2 uv = fragCoord / size;
+
+        // 1. SUBTLE CHROMATIC ABERRATION
+        vec2 distFromCenter = uv - 0.5;
+        vec2 caOffset = distFromCenter * 0.003; // Slightly increased for a touch more color bleed
+        
+        half r = composable.eval(fragCoord + caOffset * size).r;
+        half g = composable.eval(fragCoord).g;
+        half b = composable.eval(fragCoord - caOffset * size).b;
+        half a = composable.eval(fragCoord).a;
+        half4 color = half4(r, g, b, a);
+
+        // 2. THE DOT MATRIX BACKGROUND
+        float dotSpacing = 30.0; // Distance between dots in pixels
+        float dotRadius = 1.0;   // Size of the dots
+        
+        // Calculate the distance from the current pixel to the center of the nearest virtual grid cell
+        vec2 cellUv = mod(fragCoord, dotSpacing) - (dotSpacing / 2.0);
+        float distToCenter = length(cellUv);
+        
+        // Draw the dot (1.0 if inside the radius, 0.0 if outside)
+        float dot = 1.0 - step(dotRadius, distToCenter);
+        
+        // Add the dots (tinted cyan) to the background at a very low opacity (6%)
+        color.rgb += dot * half3(0.0, 0.8, 0.8) * 0.06;
+
+        // 3. MICRO SCANLINES
+        // Creates tiny horizontal lines across the screen. 
+        float scanline = sin(fragCoord.y * 3.0) * 0.03; 
+        color.rgb -= scanline;
+
+        // 5. PHOSPHOR BLOOM COMPENSATION
+        // Because the scanlines and vignette darken the image, we bump the final brightness slightly
+        color.rgb *= 1.02;
+
+        return color;
+    }
+"""
+
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 fun Modifier.crtTerminalEffect(): Modifier {
@@ -108,3 +156,30 @@ fun Modifier.crtTerminalEffect(): Modifier {
     }
 }
 
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+@Composable
+fun Modifier.tacticalCrtEffect(): Modifier {
+    val shader = remember { RuntimeShader(TACTICAL_CRT_SHADER) }
+
+    return this.graphicsLayer {
+        if (size.width > 0f && size.height > 0f) {
+            shader.setFloatUniform("size", size.width, size.height)
+
+            renderEffect = RenderEffect
+                .createRuntimeShaderEffect(shader, "composable")
+                .asComposeRenderEffect()
+
+            clip = true
+        }
+    }
+}
+
+@Composable
+fun Modifier.tacticalCrtEffectIfSupported(): Modifier {
+    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        @Suppress("NewApi")
+        this.tacticalCrtEffect()
+    } else {
+        this
+    }
+}
