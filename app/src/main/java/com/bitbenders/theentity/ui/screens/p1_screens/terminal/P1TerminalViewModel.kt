@@ -402,6 +402,38 @@ class P1TerminalViewModel @Inject constructor(
     private fun handleRoundOne(prompt: String) {
         viewModelScope.launch {
             try {
+                val normalizedPrompt = prompt.lowercase(Locale.US)
+                val targetLower = round1TargetWord.lowercase(Locale.US)
+
+                if (targetLower.isNotBlank() && normalizedPrompt.contains(targetLower)) {
+                    gameEngineRepository.addStrike("Direct target word usage is not allowed")
+                    _uiState.update {
+                        it.copy(
+                            chatHistory = it.chatHistory + listOf(
+                                "ERR: DIRECT TARGET WORD DETECTED.",
+                                "STRIKE APPLIED.",
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
+                val forbiddenHit = round1ForbiddenWords.firstOrNull {
+                    normalizedPrompt.contains(it.lowercase(Locale.US))
+                }
+                if (forbiddenHit != null) {
+                    gameEngineRepository.addStrike("Forbidden word used: $forbiddenHit")
+                    _uiState.update {
+                        it.copy(
+                            chatHistory = it.chatHistory + listOf(
+                                "ERR: FORBIDDEN LEXICON DETECTED ($forbiddenHit).",
+                                "STRIKE APPLIED.",
+                            )
+                        )
+                    }
+                    return@launch
+                }
+
                 val result = evaluatePlayerInputUseCase(
                     input = prompt,
                     hiddenAnswer = round1TargetWord,
@@ -417,7 +449,7 @@ class P1TerminalViewModel @Inject constructor(
                     }
                     return@launch
                 }
-                if (result.accepted || prompt.contains(round1TargetWord, ignoreCase = true)) {
+                if (result.accepted) {
                     lockChunk(0, round1TargetWord.uppercase())
                     _uiState.update {
                         val withRound2Logs = appendRound2IncidentLogsIfNeeded(

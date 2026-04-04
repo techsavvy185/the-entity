@@ -48,7 +48,8 @@ object RoundOneCatalog {
     }
 
     fun selectPuzzle(roomId: String): WordPuzzleEntry {
-        val index = stableIndex(roomId, "puzzle", wordPuzzles.size)
+        // Use the same seed as persona selection so both players reference one coherent profile.
+        val index = stableIndex(roomId, "persona", wordPuzzles.size)
         return wordPuzzles[index]
     }
 

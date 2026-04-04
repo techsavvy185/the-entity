@@ -9,6 +9,7 @@ import com.bitbenders.theentity.domain.repository.HealthStatus
 import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
 import com.bitbenders.theentity.domain.repository.IncidentLog
 import com.bitbenders.theentity.domain.repository.Round1Data
+import com.bitbenders.theentity.domain.repository.RoundOneSelection
 import com.bitbenders.theentity.domain.repository.Round2Data
 import com.bitbenders.theentity.domain.repository.Round3Data
 import com.bitbenders.theentity.domain.repository.Round4NativeBriefData
@@ -49,6 +50,17 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
                 "set_hidden_answer_for_room",
                 "configure_local_dev_integrations",
             )
+        )
+    }
+
+    override fun peekRoundOneSelection(): RoundOneSelection? {
+        ensureRoundOneSelection()
+        val persona = selectedPersona ?: return null
+        val puzzle = selectedPuzzle ?: return null
+        return RoundOneSelection(
+            persona = persona,
+            targetWord = puzzle.targetWord,
+            forbiddenWords = puzzle.forbiddenWords,
         )
     }
 
@@ -102,7 +114,7 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
                 persona = persona,
                 targetWord = puzzle.targetWord,
                 forbiddenWords = puzzle.forbiddenWords,
-                dialogue = "$persona says: Keep your head down and force out the word ${puzzle.targetWord}."
+                dialogue = "$persona slips into a tense monologue. Identify the persona and steer the conversation carefully."
             ),
             round2 = Round2Data(
                 incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),

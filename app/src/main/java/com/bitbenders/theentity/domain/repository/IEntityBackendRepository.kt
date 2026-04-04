@@ -52,6 +52,9 @@ interface IEntityBackendRepository {
         selectedCueId: String? = null,
         voiceId: String? = null,
     ): VillainSpeechResult
+
+    // Returns current room-linked Round 1 pairing when a room has already been established.
+    fun peekRoundOneSelection(): RoundOneSelection?
 }
 
 // ─── Domain result types ─────────────────────────────────────────────────────
@@ -128,6 +131,12 @@ data class VillainSpeechResult(
 data class SpeechCue(
     val cueId: String,
     val text: String,
+)
+
+data class RoundOneSelection(
+    val persona: String,
+    val targetWord: String,
+    val forbiddenWords: List<String>,
 )
 
 // ─── Legacy types (kept for backward compat) ─────────────────────────────────

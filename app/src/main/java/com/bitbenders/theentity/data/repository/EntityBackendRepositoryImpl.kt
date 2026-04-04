@@ -10,6 +10,7 @@ import com.bitbenders.theentity.domain.repository.HealthStatus
 import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
 import com.bitbenders.theentity.domain.repository.IncidentLog
 import com.bitbenders.theentity.domain.repository.Round1Data
+import com.bitbenders.theentity.domain.repository.RoundOneSelection
 import com.bitbenders.theentity.domain.repository.Round2Data
 import com.bitbenders.theentity.domain.repository.Round3Data
 import com.bitbenders.theentity.domain.repository.Round4NativeBriefData
@@ -69,6 +70,18 @@ class EntityBackendRepositoryImpl @Inject constructor(
                 "set_hidden_answer_for_room",
                 "configure_local_dev_integrations",
             ),
+        )
+    }
+
+    override fun peekRoundOneSelection(): RoundOneSelection? {
+        val roomId = activeRoomId ?: return null
+        ensureRoundOneSelection(roomId)
+        val persona = selectedPersona ?: return null
+        val puzzle = selectedPuzzle ?: return null
+        return RoundOneSelection(
+            persona = persona,
+            targetWord = puzzle.targetWord,
+            forbiddenWords = puzzle.forbiddenWords,
         )
     }
 
@@ -294,7 +307,7 @@ class EntityBackendRepositoryImpl @Inject constructor(
             dialogue = payload?.readString("dialogue")
                 ?: payload?.readString("paragraph")
                 ?: payload?.readString("voiceover_sentence")
-                ?: "$localPersona mutters in panic, circling the word ${localPuzzle.targetWord}.",
+                ?: "$localPersona speaks in fragmented clues. Identify who they sound like and probe without forbidden wording.",
         )
 
         // Placeholder data for rounds 2-4 until those reducers are integrated.

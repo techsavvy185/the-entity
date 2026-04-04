@@ -2,7 +2,9 @@ package com.bitbenders.theentity.ui.screens.p2_screens.admin_dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.bitbenders.theentity.data.round1.RoundOneCatalog
 import com.bitbenders.theentity.domain.models.P2HardwareAction
+import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
 import com.bitbenders.theentity.domain.repository.IMultiplayerRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.delay
@@ -15,6 +17,7 @@ import javax.inject.Inject
 
 @HiltViewModel
 class P2DashboardViewModel @Inject constructor(
+    private val backendRepository: IEntityBackendRepository,
     private val multiplayerRepository: IMultiplayerRepository,
 ) : ViewModel() {
 
@@ -22,6 +25,8 @@ class P2DashboardViewModel @Inject constructor(
     val uiState: StateFlow<P2DashboardUiState> = _uiState.asStateFlow()
 
     init {
+        seedPersonaEntries()
+        startPersonaRefresh()
         startMissionTimer()
     }
 
@@ -110,6 +115,37 @@ class P2DashboardViewModel @Inject constructor(
         _uiState.update { state ->
             val next = (state.actionLog + message).takeLast(14)
             state.copy(actionLog = next)
+        }
+    }
+
+    private fun seedPersonaEntries() {
+        val entries = RoundOneCatalog.personas.zip(RoundOneCatalog.wordPuzzles).map { (persona, puzzle) ->
+            PersonaTabEntry(
+                persona = persona,
+                targetWord = puzzle.targetWord,
+                forbiddenWords = puzzle.forbiddenWords,
+            )
+        }
+        _uiState.update { it.copy(personaEntries = entries) }
+    }
+
+    private fun startPersonaRefresh() {
+        viewModelScope.launch {
+            while (true) {
+                val selection = backendRepository.peekRoundOneSelection()
+                _uiState.update { state ->
+                    state.copy(
+                        activePersonaEntry = selection?.let {
+                            PersonaTabEntry(
+                                persona = it.persona,
+                                targetWord = it.targetWord,
+                                forbiddenWords = it.forbiddenWords,
+                            )
+                        }
+                    )
+                }
+                delay(1_000)
+            }
         }
     }
 }

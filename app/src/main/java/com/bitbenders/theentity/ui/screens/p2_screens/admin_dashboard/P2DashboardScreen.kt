@@ -38,6 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bitbenders.theentity.ui.components.HardwareDial
@@ -235,7 +237,8 @@ fun P2DashboardScreen(
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .padding(end = 2.dp),
+                                    .padding(end = 2.dp)
+                                    .verticalScroll(rememberScrollState()),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 when (tab) {
@@ -259,18 +262,25 @@ fun P2DashboardScreen(
                                     P2Tab.Personas -> {
                                         ManualHeading("PERSONAS // BEHAVIORAL DOSSIER")
                                         Spacer(Modifier.height(6.dp))
-                                        ManualSection(
-                                            "SUBJECT CLASSIFICATION",
-                                            "Persona masks drift under stress. A calm tone can trigger hostile mirroring if repeated with perfect cadence."
-                                        )
-                                        ManualSection(
-                                            "INTERVIEW TEMPLATE",
-                                            "Ask one factual question, one memory question, then one contradiction. Log the first spontaneous correction."
-                                        )
-                                        ManualSection(
-                                            "FIELD NOTE",
-                                            "Subject 7 wrote three names in graphite, crossed out all three, and circled blank space."
-                                        )
+                                        val active = uiState.activePersonaEntry
+                                        if (active != null) {
+                                            ManualSection(
+                                                "ACTIVE ROOM PERSONA: ${active.persona.uppercase(Locale.US)}",
+                                                "Target: ${active.targetWord} | Forbidden: ${active.forbiddenWords.joinToString(", ")}"
+                                            )
+                                        } else {
+                                            ManualSection(
+                                                "ACTIVE ROOM PERSONA",
+                                                "Join or create the same room as P1 to load the active target and forbidden words."
+                                            )
+                                        }
+
+                                        uiState.personaEntries.forEach { entry ->
+                                            ManualSection(
+                                                entry.persona.uppercase(Locale.US),
+                                                "Target: ${entry.targetWord} | Forbidden: ${entry.forbiddenWords.joinToString(", ")}"
+                                            )
+                                        }
                                     }
 
                                     P2Tab.Poems -> {
