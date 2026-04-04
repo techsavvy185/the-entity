@@ -1,8 +1,5 @@
 package com.bitbenders.theentity.ui.screens.p2_screens.admin_dashboard
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -15,27 +12,22 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.rememberScrollState
@@ -45,7 +37,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.bitbenders.theentity.data.round4.RoundFourCatalog
-import com.bitbenders.theentity.ui.components.HardwareDial
 import com.bitbenders.theentity.ui.effects.tacticalCrtEffectIfSupported
 import com.bitbenders.theentity.ui.theme.EntityTypography
 import java.util.Locale
@@ -60,8 +51,9 @@ private val ExpandBlue = Color(0xFF00AFFF)
 private enum class P2Tab(val label: String, val icon: String) {
     Index("INDEX", "[]"),
     Personas("PERSONAS", "@"),
-    Poems("POEMS", "~"),
-    Display("DISPLAY", "?")
+    Dissect("DISSECT", "†"),
+    Display("DISPLAY", "?"),
+    Signals("SIGNALS", "~")
 }
 
 @Composable
@@ -70,16 +62,12 @@ fun P2DashboardScreen(
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    var selectedTabIndex by remember { mutableIntStateOf(P2Tab.Index.ordinal) }
-    var tabsCollapsed by remember { mutableStateOf(true) }
-    var anomalyMode by remember { mutableStateOf(false) }
-    val pagerState = rememberPagerState(initialPage = selectedTabIndex, pageCount = { P2Tab.entries.size })
-    val sheetProgress by animateFloatAsState(
-        targetValue = if (anomalyMode) 0f else 1f,
-        animationSpec = if (anomalyMode) spring(stiffness = 420f) else tween(durationMillis = 260),
-        label = "AnomalySheetProgress"
-    )
-    val density = LocalDensity.current
+    val tabOrder = remember {
+        val rest = P2Tab.entries.filter { it != P2Tab.Index }.shuffled()
+        listOf(P2Tab.Index) + rest
+    }
+    var selectedTabIndex by remember { mutableIntStateOf(0) }
+    val pagerState = rememberPagerState(initialPage = 0, pageCount = { tabOrder.size })
 
     LaunchedEffect(pagerState.currentPage) {
         selectedTabIndex = pagerState.currentPage
@@ -132,111 +120,18 @@ fun P2DashboardScreen(
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                if (!tabsCollapsed) {
-                    Column(
-                        modifier = Modifier.fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .width(64.dp)
-                                .height(28.dp)
-                                .border(1.dp, ExpandBlue, RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
-                                .background(ExpandBlue, RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp))
-                                .clickable { tabsCollapsed = true },
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "<",
-                                color = Color(0xFF02111A),
-                                style = EntityTypography.headlineMedium.copy(fontSize = 18.sp, lineHeight = 18.sp)
-                            )
-                        }
-
-                        P2Tab.entries.forEachIndexed { index, tab ->
-                            val selected = index == selectedTabIndex
-                            Box(
-                                modifier = Modifier
-                                    .size(width = 64.dp, height = 54.dp)
-                                    .border(
-                                        width = if (selected) 2.dp else 1.dp,
-                                        color = if (selected) Accent else AccentSoft,
-                                        shape = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)
-                                    )
-                                    .background(
-                                        color = if (selected) Color(0x330AB3D8) else Color(0x22040A12),
-                                        shape = RoundedCornerShape(topStart = 10.dp, bottomStart = 10.dp)
-                                    )
-                                    .clickable {
-                                        selectedTabIndex = index
-                                        tabsCollapsed = true
-                                        anomalyMode = false
-                                    }
-                                    .padding(vertical = 6.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text(tab.icon, color = Ink, style = EntityTypography.titleLarge.copy(fontSize = 16.sp, lineHeight = 16.sp))
-                                    Text(tab.label, color = Accent, style = EntityTypography.labelLarge.copy(fontSize = 10.sp, lineHeight = 10.sp))
-                                }
-                            }
-                        }
-                    }
-                }
-
-                BoxWithConstraints(
+                TacticalPanel(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
                 ) {
-                    val sheetTravelPx = with(density) { maxHeight.toPx() }
-                    TacticalPanel(
-                        modifier = Modifier.fillMaxSize()
-                    ) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            if (tabsCollapsed) {
-                                Box(
-                                    modifier = Modifier
-                                        .border(1.dp, ExpandBlue, RoundedCornerShape(12.dp))
-                                        .background(ExpandBlue, RoundedCornerShape(12.dp))
-                                        .clickable { tabsCollapsed = false }
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Text(
-                                        "Open tabs",
-                                        color = Color(0xFF02111A),
-                                        style = EntityTypography.labelLarge.copy(fontSize = 14.sp, lineHeight = 14.sp)
-                                    )
-                                }
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .border(1.dp, ExpandBlue, RoundedCornerShape(12.dp))
-                                    .background(ExpandBlue, RoundedCornerShape(12.dp))
-                                    .clickable {
-                                        anomalyMode = true
-                                        tabsCollapsed = true
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    "Anomaly",
-                                    color = Color(0xFF02111A),
-                                    style = EntityTypography.labelLarge.copy(fontSize = 14.sp, lineHeight = 14.sp)
-                                )
-                            }
-                        }
-                        Spacer(Modifier.height(8.dp))
-
-                        HorizontalPager(
-                            state = pagerState,
-                            modifier = Modifier.fillMaxSize(),
-                            userScrollEnabled = !anomalyMode,
-                            key = { it }
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier.fillMaxSize(),
+                        key = { it }
                         ) { page ->
-                            val tab = P2Tab.entries[page]
+                            val tab = tabOrder[page]
+                            val isLastPage = page == tabOrder.lastIndex
                             Column(
                                 modifier = Modifier
                                     .fillMaxSize()
@@ -246,20 +141,89 @@ fun P2DashboardScreen(
                             ) {
                                 when (tab) {
                                     P2Tab.Index -> {
-                                        ManualHeading("INDEX // OPERATOR FIELD MANUAL")
-                                        Spacer(Modifier.height(6.dp))
+                                        Spacer(Modifier.height(12.dp))
+                                        // Title block
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .border(2.dp, Accent, RoundedCornerShape(6.dp))
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                                Text(
+                                                    "⬡ ARMOROS ⬡",
+                                                    color = Accent,
+                                                    style = EntityTypography.headlineMedium.copy(fontSize = 11.sp, lineHeight = 12.sp)
+                                                )
+                                                Spacer(Modifier.height(8.dp))
+                                                Text(
+                                                    "OPERATOR\nFIELD MANUAL",
+                                                    color = Ink,
+                                                    style = EntityTypography.displayLarge.copy(fontSize = 26.sp, lineHeight = 30.sp),
+                                                    textAlign = TextAlign.Center
+                                                )
+                                                Spacer(Modifier.height(6.dp))
+                                                Text(
+                                                    "REV 4.1  ·  RESTRICTED",
+                                                    color = AccentSoft,
+                                                    style = EntityTypography.labelLarge.copy(fontSize = 10.sp, lineHeight = 12.sp)
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(Modifier.height(10.dp))
+                                        // Classification
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .background(Color(0x44FF4D4D), RoundedCornerShape(4.dp))
+                                                .border(1.dp, Color(0xFFFF4D4D), RoundedCornerShape(4.dp))
+                                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                "▲ CLASSIFIED — OPERATOR EYES ONLY ▲",
+                                                color = Color(0xFFFF4D4D),
+                                                style = EntityTypography.headlineMedium.copy(fontSize = 11.sp, lineHeight = 12.sp),
+                                                textAlign = TextAlign.Center
+                                            )
+                                        }
+
+                                        Spacer(Modifier.height(10.dp))
                                         ManualSection(
-                                            "REVISION NOTE",
-                                            "This binder was reconstructed from partial machine logs. Some references are out of order. If page numbers disagree, trust the margin code."
+                                            "OVERVIEW",
+                                            "This manual contains all reference material required for remote operator support during active containment events. Memorization is not expected. Speed of lookup is critical."
                                         )
+
+                                        val tocDescriptions = mapOf(
+                                            P2Tab.Personas to "Behavioral profiles & forbidden words",
+                                            P2Tab.Dissect to "Post-mortem dissection flowchart",
+                                            P2Tab.Display to "Who's on First module reference",
+                                            P2Tab.Signals to "Radio interference & recovered transmissions"
+                                        )
+                                        val tocText = tabOrder
+                                            .filter { it != P2Tab.Index }
+                                            .mapIndexed { i, tab ->
+                                                "§${i + 1}  ${tab.label} — ${tocDescriptions[tab] ?: ""}"
+                                            }
+                                            .joinToString("\n")
+                                        ManualSection("TABLE OF CONTENTS", tocText)
+
                                         ManualSection(
-                                            "GENERAL HANDLING",
-                                            "Maintain low-light operation. Avoid direct verbal prompts near active terminals. Rotate stations every 9 minutes to reduce fixation artifacts."
+                                            "HANDLING INSTRUCTIONS",
+                                            "• Keep this terminal in low-light conditions at all times.\n" +
+                                                "• Do not read aloud near active containment zones.\n" +
+                                                "• Rotate stations every 9 minutes to prevent fixation.\n" +
+                                                "• If page references conflict, trust the margin code."
                                         )
+
                                         ManualSection(
-                                            "ARCHIVE FRAGMENT",
-                                            "Shelf 03-B contains duplicate labels for entries 11 through 14. Cross-check by paper texture, not title."
+                                            "FIELD NOTE",
+                                            "This binder was reconstructed from partial machine logs recovered after Incident ΔV-7. Some sections may appear out of order. Cross-reference entries by content, not sequence."
                                         )
+
+                                        SwipeHint(isLast = isLastPage)
                                     }
 
                                     P2Tab.Personas -> {
@@ -284,23 +248,127 @@ fun P2DashboardScreen(
                                                 "Target: ${entry.targetWord} | Forbidden: ${entry.forbiddenWords.joinToString(", ")}"
                                             )
                                         }
+
+                                        SwipeHint(isLast = isLastPage)
                                     }
 
-                                    P2Tab.Poems -> {
-                                        ManualHeading("POEMS // COGNITIVE LURES")
+                                    P2Tab.Dissect -> {
+                                        ManualHeading("DISSECT // POST-MORTEM PROTOCOL")
                                         Spacer(Modifier.height(6.dp))
                                         ManualSection(
-                                            "USAGE WARNING",
-                                            "Recitation can stabilize panic but may synchronize heart rate with hostile signals. Keep lines short."
+                                            "INSTRUCTIONS",
+                                            "P1 reads a post-mortem report. Ask the questions below in order, following YES/NO branches. Arrive at a 4-digit code, then apply any matching Global Modifiers."
+                                        )
+
+                                        Spacer(Modifier.height(4.dp))
+                                        ManualHeading("GLOBAL MODIFIERS")
+                                        Spacer(Modifier.height(4.dp))
+                                        ManualSection(
+                                            "① BRACKET ANOMALY",
+                                            "If the log contains square brackets [ ] anywhere in the text, swap the first and last digits.\n(1234 → 4231)"
                                         )
                                         ManualSection(
-                                            "EXCERPT A",
-                                            "Under the glass the numbers sleep. Counting teeth in circuits deep. If the hallway starts to hum, close your eyes and count to one."
+                                            "② ODD TIMESTAMP",
+                                            "Look at the time log at the top of the report. If the timestamp ends in an odd number (e.g., 04:17), replace all even digits in your code with 0.\n(1234 → 1030)"
                                         )
                                         ManualSection(
-                                            "EXCERPT B",
-                                            "Ink remembers what we hide. Doors forget which side is wide. Name the shadow, lose the key."
+                                            "③ ASTERISK SHIFT",
+                                            "If you see an asterisk (*) anywhere in the body of the report, shift all digits one position to the right. The last number loops to the front.\n(1234 → 4123)"
                                         )
+                                        ManualSection(
+                                            "④ HEX GLITCH",
+                                            "If the report contains a raw hex memory address (like 0x00 or 0xA1), subtract 1 from every digit. 0 wraps to 9.\n(1059 → 0948)"
+                                        )
+                                        ManualSection(
+                                            "⑤ SCREAMING RULE",
+                                            "If there are exactly THREE consecutive words in ALL CAPS, swap the middle two digits.\n(1234 → 1324)"
+                                        )
+                                        ManualSection(
+                                            "⑥ CORRUPTED AUTHOR",
+                                            "If the author's name at the top of the report is \"UNKNOWN\", replace the highest digit in your code with a 5.\n(1294 → 1254)"
+                                        )
+
+                                        Spacer(Modifier.height(12.dp))
+                                        ManualHeading("DISSECTION FLOWCHART")
+                                        Spacer(Modifier.height(4.dp))
+
+                                        FlowchartNode(
+                                            tag = "Q1 — START",
+                                            question = "Did the report mention the presence of any biological fluid (blood, bile, or resin) at the terminal?",
+                                            yes = "→ Q2", no = "→ Q3"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q2 — BIO-PATH",
+                                            question = "Was the subject's neural link severed forcefully?",
+                                            yes = "→ Q4", no = "→ Q5"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q3 — TECH-PATH",
+                                            question = "Did the terminal log a localized power surge prior to termination?",
+                                            yes = "→ Q6", no = "→ Q7"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q4",
+                                            question = "Is there a reference to audible screaming or vocal distress on the audio logs?",
+                                            yes = "→ Q8", no = "→ Q9"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q5",
+                                            question = "Were the subject's eyes described in the autopsy notes (e.g., \"dilated\", \"burnt\", \"missing\")?",
+                                            yes = "→ Q10", no = "→ Q11"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q6",
+                                            question = "Was the sector cooling system offline for more than 5 minutes?",
+                                            yes = "→ Q12", no = "→ Q13"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q7",
+                                            question = "Did the AI display any conversational text before the final blackout?",
+                                            yes = "→ Q14", no = "→ Q15"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q8",
+                                            question = "Was the physical containment door locked from the inside?",
+                                            yes = "CODE: 8041", no = "CODE: 9920"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q9",
+                                            question = "Are there physical scratch marks logged on the primary console casing?",
+                                            yes = "CODE: 4412", no = "CODE: 1058"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q10",
+                                            question = "Did the medical scan show heavy metal toxicity in the bloodstream?",
+                                            yes = "CODE: 7734", no = "CODE: 2091"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q11",
+                                            question = "Was the subject clutching a personal item when the body was recovered?",
+                                            yes = "CODE: 6116", no = "CODE: 3303"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q12",
+                                            question = "Is the system core temperature listed above 90 degrees?",
+                                            yes = "CODE: 5589", no = "CODE: 0224"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q13",
+                                            question = "Did the localized EMP trigger successfully during the breach?",
+                                            yes = "CODE: 8100", no = "CODE: 4949"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q14",
+                                            question = "Did the AI refer to the subject by their real name in the logs?",
+                                            yes = "CODE: 1173", no = "CODE: 6060"
+                                        )
+                                        FlowchartNode(
+                                            tag = "Q15",
+                                            question = "Are there unidentified background audio anomalies recorded during the event?",
+                                            yes = "CODE: 2856", no = "CODE: 9401"
+                                        )
+
+                                        SwipeHint(isLast = isLastPage)
                                     }
 
                                     P2Tab.Display -> {
@@ -345,78 +413,62 @@ fun P2DashboardScreen(
                                                 words = entry.priority
                                             )
                                         }
+
+                                        SwipeHint(isLast = isLastPage)
+                                    }
+
+                                    P2Tab.Signals -> {
+                                        ManualHeading("SIGNALS // INTERFERENCE REFERENCE")
+                                        Spacer(Modifier.height(6.dp))
+                                        ManualSection(
+                                            "NOTICE",
+                                            "This appendix was recovered from Shelf 07-F. It may not correspond to your facility revision. Consult your sector lead before acting on any frequency listed below."
+                                        )
+
+                                        ManualSection(
+                                            "FREQUENCY TABLE — SECTOR 3",
+                                            "CH-01 ···· 142.7 MHz — Cargo elevator interlock\n" +
+                                                "CH-02 ···· 146.3 MHz — Mess hall paging (inactive)\n" +
+                                                "CH-03 ···· 151.9 MHz — Reserved (see memo 14-D)\n" +
+                                                "CH-04 ···· 160.0 MHz — Emergency lighting override\n" +
+                                                "CH-05 ···· 174.4 MHz — Unassigned"
+                                        )
+
+                                        ManualSection(
+                                            "STATIC CLASSIFICATIONS",
+                                            "Type A — Broadband hiss, equipment origin. Harmless.\n" +
+                                                "Type B — Rhythmic clicking, often HVAC-related.\n" +
+                                                "Type C — Tonal sweep, 2-8 second duration. Log but do not investigate.\n" +
+                                                "Type D — Vocal-adjacent patterning. File Form 9-Sigma immediately."
+                                        )
+
+                                        ManualSection(
+                                            "ANTENNA MAINTENANCE SCHEDULE",
+                                            "• Rooftop array: Inspect every 14 shifts. Last service: Shift 97.\n" +
+                                                "• Basement relay: Replace capacitor C-11 if amber LED is solid.\n" +
+                                                "• Mobile unit: Do not charge past 80%. Battery lot 44-R recalled."
+                                        )
+
+                                        ManualSection(
+                                            "RECOVERED TRANSMISSION — FRAGMENT 11",
+                                            "\"...seven, seven, hold... I can still see the corridor from here. It hasn't moved. Please confirm the corridor has not moved. Over.\""
+                                        )
+
+                                        ManualSection(
+                                            "RECOVERED TRANSMISSION — FRAGMENT 23",
+                                            "\"...repeat, the vending machine on B4 is dispensing items we did not stock. Requesting maintenance. Requesting maintenance. Over.\""
+                                        )
+
+                                        ManualSection(
+                                            "CALIBRATION NOTE",
+                                            "If the signal meter reads exactly 0.00 for longer than 30 seconds, the meter is not broken. Leave the room."
+                                        )
+
+                                        SwipeHint(isLast = isLastPage)
                                     }
                                 }
                             }
                         }
-                    }
-
-                    // Full-height anomaly sheet that rises from the bottom and covers this content area.
-                    if (sheetProgress < 0.999f) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(TabletBg)
-                                .offset {
-                                    val offsetPx = (sheetProgress * sheetTravelPx).toInt()
-                                    androidx.compose.ui.unit.IntOffset(0, offsetPx)
-                                }
-                        ) {
-                            TacticalPanel(modifier = Modifier.fillMaxSize()) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    ManualHeading("ANOMALIES // CONTAINMENT PROCEDURE")
-                                    Box(
-                                        modifier = Modifier
-                                            .border(1.dp, Color(0xFFFF4D4D), RoundedCornerShape(8.dp))
-                                            .background(Color(0xFFFF4D4D), RoundedCornerShape(8.dp))
-                                            .clickable { anomalyMode = false }
-                                            .padding(horizontal = 10.dp, vertical = 4.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            "X",
-                                            color = Color(0xFF1A0303),
-                                            style = EntityTypography.headlineMedium.copy(fontSize = 18.sp, lineHeight = 18.sp)
-                                        )
-                                    }
-                                }
-
-                                Spacer(Modifier.height(8.dp))
-                                ManualSection(
-                                    "OPERATOR BRIEF",
-                                    "Use tuning controls in short bursts. Sustained correction invites rebound noise."
-                                )
-
-                                TacticalPanel(modifier = Modifier.fillMaxWidth()) {
-                                    Text("COGNITIVE TUNING MATRIX", color = Accent, style = EntityTypography.titleLarge.copy(fontSize = 14.sp, lineHeight = 16.sp))
-                                    Spacer(Modifier.height(8.dp))
-                                    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                                        HardwareDial(
-                                            rotationValue = uiState.currentDialValue,
-                                            onRotationChanged = { viewModel.onDialTurned(it) },
-                                            modifier = Modifier.size(180.dp)
-                                        )
-                                    }
-                                    Spacer(Modifier.height(8.dp))
-                                    Slider(
-                                        value = uiState.tuningValue.toFloat(),
-                                        onValueChange = { viewModel.onTuningValueChanged(it.toInt()) },
-                                        valueRange = 0f..100f
-                                    )
-                                    Text(
-                                        text = "VALUE: ${uiState.tuningValue}",
-                                        color = Ink,
-                                        style = EntityTypography.bodyMedium.copy(fontSize = 14.sp, lineHeight = 16.sp)
-                                    )
-                                    ManualParagraph("Recommended sweep: 42 -> 57 -> 49. Pause three breaths between adjustments.")
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -499,7 +551,7 @@ private fun DisplayLookupCell(
             Text(
                 text = displayWord.ifEmpty { "\"\"" },
                 color = TabletBg,
-                style = EntityTypography.headlineMedium.copy(fontSize = 10.sp, lineHeight = 12.sp),
+                style = EntityTypography.headlineMedium.copy(fontSize = 12.sp, lineHeight = 14.sp),
                 textAlign = TextAlign.Center,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -515,7 +567,7 @@ private fun DisplayLookupCell(
                         val active = r == positionRow && c == positionCol
                         Box(
                             modifier = Modifier
-                                .size(18.dp)
+                                .size(22.dp)
                                 .border(0.5.dp, PanelEdge.copy(alpha = 0.4f)),
                             contentAlignment = Alignment.Center
                         ) {
@@ -523,8 +575,8 @@ private fun DisplayLookupCell(
                                 text = if (active) "◉" else "·",
                                 color = if (active) Accent else AccentSoft,
                                 style = EntityTypography.bodyMedium.copy(
-                                    fontSize = if (active) 13.sp else 9.sp,
-                                    lineHeight = 14.sp
+                                    fontSize = if (active) 16.sp else 10.sp,
+                                    lineHeight = 16.sp
                                 ),
                                 textAlign = TextAlign.Center
                             )
@@ -551,12 +603,90 @@ private fun PriorityListRow(
         Text(
             text = "\"$keyword\"",
             color = Accent,
-            style = EntityTypography.headlineMedium.copy(fontSize = 12.sp, lineHeight = 14.sp)
+            style = EntityTypography.headlineMedium.copy(fontSize = 14.sp, lineHeight = 16.sp)
         )
         Text(
             text = words.joinToString(", "),
             color = Color(0xFFB9D8E6),
-            style = EntityTypography.bodyMedium.copy(fontSize = 10.sp, lineHeight = 13.sp)
+            style = EntityTypography.bodyMedium.copy(fontSize = 12.sp, lineHeight = 15.sp)
         )
+    }
+}
+
+@Composable
+private fun SwipeHint(isLast: Boolean = false) {
+    Spacer(Modifier.height(16.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isLast) {
+            Text(
+                "— END OF MANUAL —",
+                color = AccentSoft,
+                style = EntityTypography.labelLarge.copy(fontSize = 11.sp, lineHeight = 12.sp)
+            )
+        } else {
+            Text(
+                "SWIPE TO TURN  ▸▸",
+                color = AccentSoft,
+                style = EntityTypography.labelLarge.copy(fontSize = 11.sp, lineHeight = 12.sp)
+            )
+        }
+    }
+    Spacer(Modifier.height(8.dp))
+}
+
+@Composable
+private fun FlowchartNode(
+    tag: String,
+    question: String,
+    yes: String,
+    no: String,
+    modifier: Modifier = Modifier
+) {
+    val isCode = yes.startsWith("CODE")
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .border(1.dp, PanelEdge, RoundedCornerShape(4.dp))
+            .background(Color(0x22040A12), RoundedCornerShape(4.dp))
+            .padding(8.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        Text(
+            text = tag,
+            color = Accent,
+            style = EntityTypography.headlineMedium.copy(fontSize = 13.sp, lineHeight = 14.sp)
+        )
+        Text(
+            text = question,
+            color = Color(0xFFB9D8E6),
+            style = EntityTypography.bodyMedium.copy(fontSize = 12.sp, lineHeight = 15.sp)
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "YES: $yes",
+                color = if (isCode) Color(0xFF4DFF4D) else Color(0xFF8CEAAA),
+                style = EntityTypography.headlineMedium.copy(
+                    fontSize = if (isCode) 14.sp else 12.sp,
+                    lineHeight = 14.sp
+                ),
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "NO: $no",
+                color = if (isCode) Color(0xFFFF6B6B) else Color(0xFFE8A090),
+                style = EntityTypography.headlineMedium.copy(
+                    fontSize = if (isCode) 14.sp else 12.sp,
+                    lineHeight = 14.sp
+                ),
+                modifier = Modifier.weight(1f)
+            )
+        }
     }
 }

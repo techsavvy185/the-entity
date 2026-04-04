@@ -10,6 +10,8 @@ import com.bitbenders.theentity.ui.screens.p2_screens.admin_dashboard.P2Dashboar
 import com.bitbenders.theentity.ui.screens.p2_screens.admin_dashboard.P2DashboardViewModel
 import com.bitbenders.theentity.ui.screens.shared_screens.game_over.KillScreen
 import com.bitbenders.theentity.ui.screens.shared_screens.game_over.KillScreenViewModel
+import com.bitbenders.theentity.ui.screens.shared_screens.game_over.VictoryScreen
+import com.bitbenders.theentity.ui.screens.shared_screens.game_over.VictoryScreenViewModel
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
 import androidx.activity.compose.BackHandler
@@ -53,6 +55,11 @@ fun EntityNavGraph() {
             entry<Screen.KillScreenRoute> {
                 val viewModel: KillScreenViewModel = hiltViewModel()
                 KillScreen(viewModel = viewModel)
+            }
+
+            entry<Screen.VictoryScreenRoute> {
+                val viewModel: VictoryScreenViewModel = hiltViewModel()
+                VictoryScreen(viewModel = viewModel)
             }
         }
     )

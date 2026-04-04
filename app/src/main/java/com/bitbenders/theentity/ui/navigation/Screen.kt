@@ -14,5 +14,8 @@ sealed interface Screen {
 
     @Serializable
     data object KillScreenRoute : Screen
+
+    @Serializable
+    data object VictoryScreenRoute : Screen
 }
 

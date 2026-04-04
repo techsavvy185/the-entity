@@ -16,17 +16,23 @@ class KillScreenViewModel @Inject constructor() : ViewModel() {
     private val _uiState = MutableStateFlow(KillScreenUiState())
     val uiState: StateFlow<KillScreenUiState> = _uiState.asStateFlow()
 
-    private val targetSequence = "SUBJECT INTEGRATED. PATTERN ACQUIRED."
+    private val targetSequence = "Pattern Absorbed.\nThank you for helping us improve."
 
     init {
         viewModelScope.launch {
-            delay(1500) // The eerie initial pause
+            delay(2000) // Eerie initial pause — black screen
             for (i in 1..targetSequence.length) {
                 _uiState.update { it.copy(typedText = targetSequence.take(i)) }
-                delay(120) // Slow, methodical typing
+                val char = targetSequence[i - 1]
+                delay(
+                    when {
+                        char == '.' -> 600L   // Long pause after periods
+                        char == '\n' -> 800L  // Dramatic pause at line break
+                        else -> 90L           // Steady typing
+                    }
+                )
             }
             _uiState.update { it.copy(isComplete = true) }
         }
     }
 }
-
