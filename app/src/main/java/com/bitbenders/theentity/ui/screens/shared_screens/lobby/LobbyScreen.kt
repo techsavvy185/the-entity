@@ -40,7 +40,7 @@ fun LobbyScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "T H E  E N T I T Y",
+            text = "T H E\nE N T I T Y",
             color = EntityGreen,
             style = MaterialTheme.typography.displayLarge,
             textAlign = TextAlign.Center
