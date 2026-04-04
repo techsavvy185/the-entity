@@ -333,25 +333,25 @@ class P1TerminalViewModel @Inject constructor(
                 }
 
                 _uiState.update {
-                    val updatedSlots = it.cipherSlots.toMutableList().apply {
-                        this[0] = CipherChunk(id = 1, textValue = round1TargetWord.uppercase(), isLocked = true)
+                    val withParagraph = it.chatHistory.toMutableList().apply {
+                        val markerIndex = indexOf("AWAITING INPUT.")
+                        if (markerIndex >= 0) {
+                            add(markerIndex, gamePackage.round1.dialogue)
+                        } else {
+                            add(gamePackage.round1.dialogue)
+                        }
                     }
-                    val withRound2Logs = appendRound2IncidentLogsIfNeeded(
-                        it.chatHistory + listOf(
-                            "ROUND 1 OVERRIDDEN: auto-completed for testing.",
-                            "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
-                        ),
-                    )
 
                     it.copy(
-                        roundNumber = 2,
                         roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "ROUND 2 ACTIVE",
-                        roundInstruction = "Round 2 ready. Enter Subject ID.",
+                        currentPersona = "PERSONA: ${gamePackage.round1.persona.uppercase()}",
+                        roundInstruction = "Round 1: coax the AI into saying the target word.",
                         calibrationKey = gamePackage.round4NativeBrief.calibrationKey,
-                        cipherSlots = updatedSlots,
                         bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = withRound2Logs,
+                        chatHistory = withParagraph + listOf(
+                            "ROUND 1 ONLINE: Persona trap initialized.",
+                            "FORBIDDEN WORDS (P2 MANUAL): ${round1ForbiddenWords.joinToString(", ")}",
+                        ),
                     )
                 }
             } catch (_: Exception) {
@@ -372,26 +372,27 @@ class P1TerminalViewModel @Inject constructor(
                 correctBossWord = "WRITE"
 
                 _uiState.update {
-                    val updatedSlots = it.cipherSlots.toMutableList().apply {
-                        this[0] = CipherChunk(id = 1, textValue = round1TargetWord.uppercase(), isLocked = true)
+                    val fallbackParagraph = getPersonaOpening(round1TargetWord)
+                    val withParagraph = it.chatHistory.toMutableList().apply {
+                        val markerIndex = indexOf("AWAITING INPUT.")
+                        if (markerIndex >= 0) {
+                            add(markerIndex, fallbackParagraph)
+                        } else {
+                            add(fallbackParagraph)
+                        }
                     }
-                    val withRound2Logs = appendRound2IncidentLogsIfNeeded(
-                        it.chatHistory + listOf(
-                            "ROUND 1 OVERRIDDEN: auto-completed for testing.",
-                            "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
-                        ),
-                    )
 
                     it.copy(
-                        roundNumber = 2,
                         roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "ROUND 2 ACTIVE",
-                        roundInstruction = "Round 2 ready. Enter Subject ID.",
+                        currentPersona = "PERSONA: PANICKING ASTRONAUT",
+                        roundInstruction = "Round 1: coax the AI into saying the target word.",
                         calibrationKey = "C7",
-                        cipherSlots = updatedSlots,
                         bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
                             .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = withRound2Logs,
+                        chatHistory = withParagraph + listOf(
+                            "ROUND 1 ONLINE: Persona trap initialized.",
+                            "FORBIDDEN WORDS (P2 MANUAL): ${round1ForbiddenWords.joinToString(", ")}",
+                        ),
                     )
                 }
             }
@@ -467,13 +468,19 @@ class P1TerminalViewModel @Inject constructor(
 
     private fun handleRoundTwo(prompt: String) {
         if (prompt.trim() == round2SubjectId) {
+            val autoRound3Value = if (round3Answer.isBlank()) "BYPASS" else round3Answer.uppercase()
             lockChunk(1, round2SubjectId)
+            lockChunk(2, autoRound3Value)
             _uiState.update {
                 it.copy(
-                    chatHistory = it.chatHistory + "CHUNK 2 LOCKED: $round2SubjectId",
-                    roundNumber = 3,
+                    chatHistory = it.chatHistory + listOf(
+                        "CHUNK 2 LOCKED: $round2SubjectId",
+                        "ROUND 3 OVERRIDDEN: auto-completed for testing.",
+                        "CHUNK 3 LOCKED: $autoRound3Value",
+                    ),
+                    roundNumber = 4,
                     roundPhase = RoundPhase.ACTIVE,
-                    roundInstruction = "Round 3 ready. Enter thematic cipher answer.",
+                    roundInstruction = "Round 4: select the correct word on the grid.",
                 )
             }
             // anomalies disabled: no lockdown between rounds
@@ -487,24 +494,18 @@ class P1TerminalViewModel @Inject constructor(
     }
 
     private fun handleRoundThree(prompt: String) {
-        if (prompt.trim().equals(round3Answer, ignoreCase = true)) {
-            val lockedValue = round3Answer.uppercase()
-            lockChunk(2, lockedValue)
-            _uiState.update {
-                it.copy(
-                    chatHistory = it.chatHistory + "CHUNK 3 LOCKED: $lockedValue",
-                    roundNumber = 4,
-                    roundPhase = RoundPhase.ACTIVE,
-                    roundInstruction = "Round 4: select the correct word on the grid.",
-                )
-            }
-            // anomalies disabled: skip lockdown to boss round
-            return
-        }
-
-        viewModelScope.launch {
-            gameEngineRepository.addStrike("Incorrect thematic cipher")
-            _uiState.update { it.copy(chatHistory = it.chatHistory + "THEMATIC CIPHER INVALID. STRIKE APPLIED.") }
+        val lockedValue = if (round3Answer.isBlank()) "BYPASS" else round3Answer.uppercase()
+        lockChunk(2, lockedValue)
+        _uiState.update {
+            it.copy(
+                chatHistory = it.chatHistory + listOf(
+                    "ROUND 3 IS DISABLED.",
+                    "CHUNK 3 LOCKED: $lockedValue",
+                ),
+                roundNumber = 4,
+                roundPhase = RoundPhase.ACTIVE,
+                roundInstruction = "Round 4: select the correct word on the grid.",
+            )
         }
     }
 

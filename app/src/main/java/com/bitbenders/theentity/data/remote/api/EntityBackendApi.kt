@@ -18,6 +18,7 @@ import retrofit2.http.POST
  */
 interface EntityBackendApi {
     // Generic reducer caller (kept for flexibility).
+    @Headers("Content-Type: application/json")
     @POST("call/{reducerName}")
     suspend fun callReducer(
         @Path("reducerName") reducerName: String,
@@ -47,6 +48,7 @@ interface EntityBackendApi {
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/terminate_room")
     suspend fun terminateRoom(
         @Header("Authorization") authorization: String?,
@@ -60,12 +62,14 @@ interface EntityBackendApi {
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/submit_terminal")
     suspend fun submitTerminal(
         @Header("Authorization") authorization: String?,
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/submit_terminal_for_room")
     suspend fun submitTerminalForRoom(
         @Header("Authorization") authorization: String?,
@@ -73,12 +77,14 @@ interface EntityBackendApi {
     ): Response<ResponseBody>
 
     // Generation reducers.
+    @Headers("Content-Type: application/json")
     @POST("call/generate_clue_manual_for_room")
     suspend fun generateClueManualForRoom(
         @Header("Authorization") authorization: String?,
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/generate_villain_speech_for_room")
     suspend fun generateVillainSpeechForRoom(
         @Header("Authorization") authorization: String?,
@@ -86,30 +92,35 @@ interface EntityBackendApi {
     ): Response<ResponseBody>
 
     // Admin/setup reducers.
+    @Headers("Content-Type: application/json")
     @POST("call/configure_integrations")
     suspend fun configureIntegrations(
         @Header("Authorization") authorization: String?,
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/configure_voice_integrations")
     suspend fun configureVoiceIntegrations(
         @Header("Authorization") authorization: String?,
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/set_hidden_answer")
     suspend fun setHiddenAnswer(
         @Header("Authorization") authorization: String?,
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/set_hidden_answer_for_room")
     suspend fun setHiddenAnswerForRoom(
         @Header("Authorization") authorization: String?,
         @Body args: JsonArray,
     ): Response<ResponseBody>
 
+    @Headers("Content-Type: application/json")
     @POST("call/configure_local_dev_integrations")
     suspend fun configureLocalDevIntegrations(
         @Header("Authorization") authorization: String?,

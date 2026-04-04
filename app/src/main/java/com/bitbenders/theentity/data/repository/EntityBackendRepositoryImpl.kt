@@ -42,6 +42,8 @@ class EntityBackendRepositoryImpl @Inject constructor(
     private var lastTerminalSnapshot: TerminalSnapshot? = null
     private var selectedPersona: String? = null
     private var selectedPuzzle: WordPuzzleEntry? = null
+    private var localDevIntegrationsConfigured: Boolean = false
+    private var lastConfiguredHiddenAnswer: String? = null
 
     // ─── Health ──────────────────────────────────────────────────────────────
 
@@ -137,23 +139,36 @@ class EntityBackendRepositoryImpl @Inject constructor(
             add(gson.toJsonTree(roomId))
             add(gson.toJsonTree(playerInput))
         }
-        val response = api.submitTerminalForRoom(
+        var response = api.submitTerminalForRoom(
             authorization = authHeader(),
             args = args,
         )
         captureIdentity(response)
 
         if (!response.isSuccessful) {
-            throw ApiException(
-                response.code(),
-                "Reducer call failed: submit_terminal_for_room ${response.errorBody()?.string().orEmpty()}",
-            )
+            val firstError = response.errorBody()?.string().orEmpty()
+            if (response.code() == 530 || firstError.contains("not configured for game", ignoreCase = true)) {
+                configureTerminalForRoomIfNeeded(roomId = roomId, hiddenAnswer = hiddenAnswer)
+                response = api.submitTerminalForRoom(
+                    authorization = authHeader(),
+                    args = args,
+                )
+                captureIdentity(response)
+                if (!response.isSuccessful) {
+                    throw ApiException(
+                        response.code(),
+                        "Reducer call failed: submit_terminal_for_room ${response.errorBody()?.string().orEmpty()}",
+                    )
+                }
+            } else {
+                throw ApiException(
+                    response.code(),
+                    "Reducer call failed: submit_terminal_for_room $firstError",
+                )
+            }
         }
 
-        val row = awaitSingleRow(
-            "select * from game_state where room_id = '$roomId'",
-            timeoutMs = 8_000L,
-        )
+        val row = awaitGameStateRow(roomId)
 
         val allowed = row?.readBoolean("armoriq_allowed", "allowed", "input_allowed")
             ?: !containsForbiddenLexicon(playerInput)
@@ -179,6 +194,49 @@ class EntityBackendRepositoryImpl @Inject constructor(
             allowed = allowed,
             blockReason = if (allowed) null else reason,
         )
+    }
+
+    private suspend fun configureTerminalForRoomIfNeeded(roomId: String, hiddenAnswer: String) {
+        if (!localDevIntegrationsConfigured) {
+            val configureArgs = JsonArray().apply {
+                add(gson.toJsonTree("http://localhost"))
+                add(gson.toJsonTree("mock-key"))
+            }
+            val configureResponse = api.configureLocalDevIntegrations(
+                authorization = authHeader(),
+                args = configureArgs,
+            )
+            captureIdentity(configureResponse)
+
+            if (!configureResponse.isSuccessful) {
+                throw ApiException(
+                    configureResponse.code(),
+                    "Reducer call failed: configure_local_dev_integrations ${configureResponse.errorBody()?.string().orEmpty()}",
+                )
+            }
+            localDevIntegrationsConfigured = true
+        }
+
+        if (lastConfiguredHiddenAnswer == hiddenAnswer) return
+
+        val setHiddenArgs = JsonArray().apply {
+            add(gson.toJsonTree(roomId))
+            add(gson.toJsonTree(hiddenAnswer))
+        }
+        val setHiddenResponse = api.setHiddenAnswerForRoom(
+            authorization = authHeader(),
+            args = setHiddenArgs,
+        )
+        captureIdentity(setHiddenResponse)
+
+        if (!setHiddenResponse.isSuccessful) {
+            throw ApiException(
+                setHiddenResponse.code(),
+                "Reducer call failed: set_hidden_answer_for_room ${setHiddenResponse.errorBody()?.string().orEmpty()}",
+            )
+        }
+
+        lastConfiguredHiddenAnswer = hiddenAnswer
     }
 
     // ─── Gemini – Clue Generator ─────────────────────────────────────────────
@@ -458,6 +516,24 @@ class EntityBackendRepositoryImpl @Inject constructor(
         }
         val rows = queryRows(sql)
         return rows.lastForCurrentIdentityOrNull() ?: rows.lastOrNull()
+    }
+
+    private suspend fun awaitGameStateRow(roomId: String): JsonObject? {
+        return try {
+            awaitSingleRow(
+                "select * from game_state where room_id = '$roomId'",
+                timeoutMs = 8_000L,
+            )
+        } catch (e: ApiException) {
+            val roomScopeMissing = e.httpCode == 400 && e.message.orEmpty().contains("room_id not in scope", ignoreCase = true)
+            if (!roomScopeMissing) throw e
+
+            // Some deployments expose game_state without room_id; use latest rows and identity filtering.
+            awaitSingleRow(
+                "select * from game_state order by updated_at desc limit 20",
+                timeoutMs = 8_000L,
+            )
+        }
     }
 
     private fun authHeader(): String? = identityToken?.let { "Bearer $it" }
