@@ -28,15 +28,22 @@ class P1TerminalViewModel @Inject constructor(
     private val resolveAnomalyUseCase: ResolveAnomalyUseCase,
 ) : ViewModel() {
 
+    private var roomId: String = ""
+
     private val _uiState = MutableStateFlow(P1TerminalUiState())
     val uiState: StateFlow<P1TerminalUiState> = _uiState.asStateFlow()
+
+    fun setRoomCode(code: String) {
+        this.roomId = code
+        _uiState.update { it.copy(roomId = code) }
+    }
 
     private var round1TargetWord: String = ""
     private var round1ForbiddenWords: List<String> = emptyList()
     private var round2SubjectId: String = ""
     private var round2IncidentLogs: List<IncidentLog> = emptyList()
     private var round2LogsPublished: Boolean = false
-    private var round3Answer: String = ""
+
     private var staticTargetFrequency: Float = 0.5f
     private var correctBossWord: String = ""
 
@@ -48,17 +55,50 @@ class P1TerminalViewModel @Inject constructor(
 
     init {
         // Observe game timer
+        // Sync authoritative game timer and phase from server
         viewModelScope.launch {
-            gameEngineRepository.remainingTimeSeconds.collect { seconds ->
-                val mins = seconds / 60
-                val secs = seconds % 60
-                _uiState.update {
-                    it.copy(timerString = String.format(Locale.US, "%02d:%02d", mins, secs))
+            var cachedDeadlineMs: Long? = null
+            while (true) {
+                if (_uiState.value.showKillScreen || _uiState.value.isVictory) {
+                    delay(1000)
+                    continue
                 }
 
-                if (seconds <= 0 && !_uiState.value.showKillScreen && !_uiState.value.isVictory) {
-                    onGameFailed("SUBJECT INTEGRATED. PATTERN ACQUIRED.")
+                val timerState = withContext(Dispatchers.IO) {
+                    runCatching { entityBackendRepository.queryGameTimerState(roomId) }.getOrNull()
                 }
+
+                if (timerState != null) {
+                    if (timerState.isGameDisqualified && !_uiState.value.showKillScreen) {
+                        onGameFailed("SUBJECT INTEGRATED. PATTERN ACQUIRED. SERVER TIMEOUT.")
+                        continue
+                    }
+
+                    if (timerState.timerStartedAtMs != null) {
+                        if (_uiState.value.isWaitingForOperator) {
+                            _uiState.update { it.copy(isWaitingForOperator = false) }
+                            // Start boot sequence now that operator is here
+                            bootstrapRoundData()
+                        }
+                        cachedDeadlineMs = timerState.timerDeadlineAtMs
+                    }
+                }
+
+                if (cachedDeadlineMs != null && !_uiState.value.isWaitingForOperator) {
+                    val remainingMs = maxOf(0L, cachedDeadlineMs - System.currentTimeMillis())
+                    val seconds = (remainingMs / 1000).toInt()
+                    val mins = seconds / 60
+                    val secs = seconds % 60
+                    _uiState.update {
+                        it.copy(timerString = String.format(Locale.US, "%02d:%02d", mins, secs))
+                    }
+                    if (remainingMs <= 0 && !_uiState.value.showKillScreen && !_uiState.value.isVictory) {
+                        onGameFailed("SUBJECT INTEGRATED. PATTERN ACQUIRED.")
+                    }
+                }
+
+                // Poll ~3 times a second to keep the timer smooth if missed
+                delay(300)
             }
         }
 
@@ -150,9 +190,9 @@ class P1TerminalViewModel @Inject constructor(
                     )
                 }
 
-                // Load round content after boot history is present so the paragraph can be inserted
-                // immediately before the "AWAITING INPUT." marker.
-                bootstrapRoundData()
+                // Set waiting for operator
+                _uiState.update { it.copy(isWaitingForOperator = true) }
+                // Round data will be bootstrapped in the timer loop once P2 joins.
 
             } catch (_: Exception) {
                 _uiState.update {
@@ -267,13 +307,12 @@ class P1TerminalViewModel @Inject constructor(
         when (_uiState.value.roundNumber) {
             1 -> handleRoundOne(prompt)
             2 -> handleRoundTwo(prompt)
-            3 -> handleRoundThree(prompt)
-            4 -> _uiState.update { it.copy(chatHistory = it.chatHistory + "Use calibration panel for round 4 selection.") }
+            3 -> _uiState.update { it.copy(chatHistory = it.chatHistory + "Use calibration panel for round 3 selection.") }
         }
     }
 
     fun onBossOptionTouched(optionId: Int, committed: Boolean) {
-        if (_uiState.value.roundNumber != 4 || _uiState.value.roundPhase != RoundPhase.ACTIVE) return
+        if (_uiState.value.roundNumber != 3 || _uiState.value.roundPhase != RoundPhase.ACTIVE) return
 
         if (!committed) {
             viewModelScope.launch {
@@ -293,7 +332,7 @@ class P1TerminalViewModel @Inject constructor(
 
         val selected = _uiState.value.bossOptions.find { it.id == optionId } ?: return
         if (selected.text.equals(correctBossWord, ignoreCase = true)) {
-            lockChunk(3, selected.text)
+            lockChunk(2, selected.text)
             _uiState.update {
                 it.copy(
                     isVictory = true,
@@ -331,31 +370,52 @@ class P1TerminalViewModel @Inject constructor(
                 round2SubjectId = gamePackage.round2.subjectId
                 round2IncidentLogs = gamePackage.round2.incidentLogs
                 round2LogsPublished = false
-                round3Answer = gamePackage.round3.answer
-                correctBossWord = gamePackage.round4NativeBrief.correctWord
 
-                val options = gamePackage.round4NativeBrief.homophones.ifEmpty {
+                correctBossWord = gamePackage.round3NativeBrief.correctWord
+
+                val options = gamePackage.round3NativeBrief.homophones.ifEmpty {
                     listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
                 }
 
-                _uiState.update {
-                    val withParagraph = it.chatHistory.toMutableList().apply {
-                        val markerIndex = indexOf("AWAITING INPUT.")
-                        if (markerIndex >= 0) {
-                            add(markerIndex, gamePackage.round1.dialogue)
-                        } else {
-                            add(gamePackage.round1.dialogue)
-                        }
-                    }
-
-                    it.copy(
-                        roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "RELAY ONLINE",
-                        roundInstruction = "Round 1: coax the AI into saying the target word.",
-                        calibrationKey = gamePackage.round4NativeBrief.calibrationKey,
-                        bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = withParagraph,
+                if (BYPASS_ROUND_1) {
+                    lockChunk(0, round1TargetWord.uppercase())
+                    val bypassHistory = appendRound2IncidentLogsIfNeeded(
+                        _uiState.value.chatHistory + listOf(
+                            "[BYPASS] ROUND 1 SKIPPED.",
+                            "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                        )
                     )
+                    _uiState.update {
+                        it.copy(
+                            roundPhase = RoundPhase.ACTIVE,
+                            currentPersona = "RELAY ONLINE",
+                            roundNumber = 2,
+                            roundInstruction = "Round 2 ready. Enter Subject ID.",
+                            calibrationKey = gamePackage.round3NativeBrief.calibrationKey,
+                            bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
+                            chatHistory = bypassHistory,
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        val withParagraph = it.chatHistory.toMutableList().apply {
+                            val markerIndex = indexOf("AWAITING INPUT.")
+                            if (markerIndex >= 0) {
+                                add(markerIndex, gamePackage.round1.dialogue)
+                            } else {
+                                add(gamePackage.round1.dialogue)
+                            }
+                        }
+
+                        it.copy(
+                            roundPhase = RoundPhase.ACTIVE,
+                            currentPersona = "RELAY ONLINE",
+                            roundInstruction = "Round 1: coax the AI into saying the target word.",
+                            calibrationKey = gamePackage.round3NativeBrief.calibrationKey,
+                            bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
+                            chatHistory = withParagraph,
+                        )
+                    }
                 }
             } catch (_: Exception) {
                 round1TargetWord = "PASSWORD"
@@ -371,29 +431,51 @@ class P1TerminalViewModel @Inject constructor(
                     ),
                 )
                 round2LogsPublished = false
-                round3Answer = "VOID"
+
                 correctBossWord = "WRITE"
 
-                _uiState.update {
-                    val fallbackParagraph = getPersonaOpening(round1TargetWord)
-                    val withParagraph = it.chatHistory.toMutableList().apply {
-                        val markerIndex = indexOf("AWAITING INPUT.")
-                        if (markerIndex >= 0) {
-                            add(markerIndex, fallbackParagraph)
-                        } else {
-                            add(fallbackParagraph)
-                        }
-                    }
-
-                    it.copy(
-                        roundPhase = RoundPhase.ACTIVE,
-                        currentPersona = "RELAY ONLINE",
-                        roundInstruction = "Round 1: coax the AI into saying the target word.",
-                        calibrationKey = "C7",
-                        bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
-                            .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
-                        chatHistory = withParagraph,
+                if (BYPASS_ROUND_1) {
+                    lockChunk(0, round1TargetWord.uppercase())
+                    val bypassHistory = appendRound2IncidentLogsIfNeeded(
+                        _uiState.value.chatHistory + listOf(
+                            "[BYPASS] ROUND 1 SKIPPED.",
+                            "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                        )
                     )
+                    _uiState.update {
+                        it.copy(
+                            roundPhase = RoundPhase.ACTIVE,
+                            currentPersona = "RELAY ONLINE",
+                            roundNumber = 2,
+                            roundInstruction = "Round 2 ready. Enter Subject ID.",
+                            calibrationKey = "C7",
+                            bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
+                                .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
+                            chatHistory = bypassHistory,
+                        )
+                    }
+                } else {
+                    _uiState.update {
+                        val fallbackParagraph = getPersonaOpening(round1TargetWord)
+                        val withParagraph = it.chatHistory.toMutableList().apply {
+                            val markerIndex = indexOf("AWAITING INPUT.")
+                            if (markerIndex >= 0) {
+                                add(markerIndex, fallbackParagraph)
+                            } else {
+                                add(fallbackParagraph)
+                            }
+                        }
+
+                        it.copy(
+                            roundPhase = RoundPhase.ACTIVE,
+                            currentPersona = "RELAY ONLINE",
+                            roundInstruction = "Round 1: coax the AI into saying the target word.",
+                            calibrationKey = "C7",
+                            bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
+                                .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
+                            chatHistory = withParagraph,
+                        )
+                    }
                 }
             }
         }
@@ -474,7 +556,32 @@ class P1TerminalViewModel @Inject constructor(
                     }
                 } else {
                     val aiReply = result.reason.takeIf { it.isNotBlank() } ?: "AI DEFLECTED. REFRAME PROMPT."
-                    _uiState.update { it.copy(chatHistory = it.chatHistory + "[ENTITY_ZERO]: $aiReply") }
+
+                    // Check if the AI's response contains the target word — auto-advance if so
+                    val replyContainsTarget = aiReply.split(Regex("\\W+")).any { word ->
+                        word.equals(round1TargetWord, ignoreCase = true)
+                    }
+
+                    if (replyContainsTarget) {
+                        lockChunk(0, round1TargetWord.uppercase())
+                        _uiState.update {
+                            val withRound2Logs = appendRound2IncidentLogsIfNeeded(
+                                it.chatHistory + listOf(
+                                    "[ENTITY_ZERO]: $aiReply",
+                                    "TARGET WORD DETECTED IN ENTITY RESPONSE.",
+                                    "CHUNK 1 LOCKED: ${round1TargetWord.uppercase()}",
+                                ),
+                            )
+                            it.copy(
+                                chatHistory = withRound2Logs,
+                                roundNumber = 2,
+                                roundPhase = RoundPhase.ACTIVE,
+                                roundInstruction = "Round 2 ready. Enter Subject ID.",
+                            )
+                        }
+                    } else {
+                        _uiState.update { it.copy(chatHistory = it.chatHistory + "[ENTITY_ZERO]: $aiReply") }
+                    }
                 }
             } catch (e: Exception) {
                 _uiState.update { state ->
@@ -511,22 +618,17 @@ class P1TerminalViewModel @Inject constructor(
 
     private fun handleRoundTwo(prompt: String) {
         if (prompt.trim() == round2SubjectId) {
-            val autoRound3Value = if (round3Answer.isBlank()) "BYPASS" else round3Answer.uppercase()
             lockChunk(1, round2SubjectId)
-            lockChunk(2, autoRound3Value)
             _uiState.update {
                 it.copy(
                     chatHistory = it.chatHistory + listOf(
                         "CHUNK 2 LOCKED: $round2SubjectId",
-                        "ROUND 3 OVERRIDDEN: auto-completed for testing.",
-                        "CHUNK 3 LOCKED: $autoRound3Value",
                     ),
-                    roundNumber = 4,
+                    roundNumber = 3,
                     roundPhase = RoundPhase.ACTIVE,
-                    roundInstruction = "Round 4: select the correct word on the grid.",
+                    roundInstruction = "Round 3: select the correct word on the grid.",
                 )
             }
-            // anomalies disabled: no lockdown between rounds
             return
         }
 
@@ -536,21 +638,7 @@ class P1TerminalViewModel @Inject constructor(
         }
     }
 
-    private fun handleRoundThree(prompt: String) {
-        val lockedValue = if (round3Answer.isBlank()) "BYPASS" else round3Answer.uppercase()
-        lockChunk(2, lockedValue)
-        _uiState.update {
-            it.copy(
-                chatHistory = it.chatHistory + listOf(
-                    "ROUND 3 IS DISABLED.",
-                    "CHUNK 3 LOCKED: $lockedValue",
-                ),
-                roundNumber = 4,
-                roundPhase = RoundPhase.ACTIVE,
-                roundInstruction = "Round 4: select the correct word on the grid.",
-            )
-        }
-    }
+
 
     private fun triggerStaticAnomaly() {
         // anomalies kept for later; currently not used
@@ -640,6 +728,9 @@ class P1TerminalViewModel @Inject constructor(
     }
 
     companion object {
+        /** Set to true to skip Round 1 and start directly at Round 2. */
+        private const val BYPASS_ROUND_1 = false
+
         private val GLYPHS = listOf("☉", "☊", "♇", "⚼", "⌬", "⋔", "⟐", "⟁", "✶")
         private const val STATIC_RESOLVE_TOLERANCE = 0.06f
     }

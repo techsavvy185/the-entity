@@ -55,6 +55,9 @@ interface IEntityBackendRepository {
 
     // Returns current room-linked Round 1 pairing when a room has already been established.
     fun peekRoundOneSelection(): RoundOneSelection?
+
+    // ─── Game Timer State ───────────────────────────────────────────────────
+    suspend fun queryGameTimerState(roomId: String): GameTimerState?
 }
 
 // ─── Domain result types ─────────────────────────────────────────────────────
@@ -69,6 +72,12 @@ data class RoomSession(
     val roomId: String,
 )
 
+data class GameTimerState(
+    val timerStartedAtMs: Long?,
+    val timerDeadlineAtMs: Long?,
+    val isGameDisqualified: Boolean,
+)
+
 data class ArmorIqResult(
     val allowed: Boolean,
     val blockReason: String?,
@@ -80,8 +89,7 @@ data class GamePackage(
     val sharedManualIntro: String,
     val round1: Round1Data,
     val round2: Round2Data,
-    val round3: Round3Data,
-    val round4NativeBrief: Round4NativeBriefData,
+    val round3NativeBrief: Round3NativeBriefData,
 )
 
 data class Round1Data(
@@ -102,14 +110,7 @@ data class IncidentLog(
     val logText: String,
 )
 
-data class Round3Data(
-    val theme: String,
-    val cipherText: String,
-    val decodingRule: String,
-    val answer: String,
-)
-
-data class Round4NativeBriefData(
+data class Round3NativeBriefData(
     val homophones: List<String>,
     val calibrationKey: String,
     val correctWord: String,

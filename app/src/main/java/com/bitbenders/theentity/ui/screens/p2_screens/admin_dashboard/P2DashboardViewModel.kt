@@ -13,6 +13,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import javax.inject.Inject
 
 @HiltViewModel
@@ -23,6 +25,12 @@ class P2DashboardViewModel @Inject constructor(
 
     private val _uiState = MutableStateFlow(P2DashboardUiState())
     val uiState: StateFlow<P2DashboardUiState> = _uiState.asStateFlow()
+
+    private var roomId: String = ""
+
+    fun setRoomCode(code: String) {
+        this.roomId = code
+    }
 
     init {
         seedPersonaEntries()
@@ -101,12 +109,25 @@ class P2DashboardViewModel @Inject constructor(
 
     private fun startMissionTimer() {
         viewModelScope.launch {
+            var cachedDeadlineMs: Long? = null
             while (true) {
-                delay(1_000)
-                _uiState.update { state ->
-                    if (state.missionSecondsRemaining <= 0) state
-                    else state.copy(missionSecondsRemaining = state.missionSecondsRemaining - 1)
+                if (roomId.isNotEmpty()) {
+                    val timerState = withContext(Dispatchers.IO) {
+                        runCatching { backendRepository.queryGameTimerState(roomId) }.getOrNull()
+                    }
+
+                    if (timerState != null && timerState.timerStartedAtMs != null) {
+                        cachedDeadlineMs = timerState.timerDeadlineAtMs
+                    }
                 }
+
+                if (cachedDeadlineMs != null) {
+                    val remainingMs = maxOf(0L, cachedDeadlineMs - System.currentTimeMillis())
+                    _uiState.update { state ->
+                        state.copy(missionSecondsRemaining = (remainingMs / 1000).toInt())
+                    }
+                }
+                delay(300)
             }
         }
     }

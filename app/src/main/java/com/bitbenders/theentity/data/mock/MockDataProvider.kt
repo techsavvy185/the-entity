@@ -14,7 +14,7 @@ object MockDataProvider {
     // ===================== Round Data =====================
 
     fun getMockRoundState(roundNumber: Int): BackendRoundState {
-        val coercedRound = roundNumber.coerceIn(1, 4)
+        val coercedRound = roundNumber.coerceIn(1, 3)
         return BackendRoundState(
             roundNumber = coercedRound,
             phaseLabel = PHASE_LABELS.getValue(coercedRound),
@@ -90,15 +90,13 @@ object MockDataProvider {
     private val PHASE_LABELS = mapOf(
         1 to "Persona Trap",
         2 to "Post-Mortem Logs",
-        3 to "Thematic Cipher",
-        4 to "Hostile Lexical Calibration",
+        3 to "Hostile Lexical Calibration",
     )
 
     private val ROUND_INSTRUCTIONS = mapOf(
         1 to "Force the persona to reveal the target word without using forbidden words.",
         2 to "Interrogate incident logs and derive the Subject ID.",
-        3 to "Parse the theme and extract the required 4-letter key.",
-        4 to "Resolve the lexical calibration grid under interference.",
+        3 to "Resolve the lexical calibration grid under interference.",
     )
 
     private val PERSONA_ROTATION = listOf(
@@ -111,20 +109,12 @@ object MockDataProvider {
             forbiddenWords = listOf("drink", "toxic", "kill", "sick", "dead")
         ),
         PersonaConfig(
-            targetWord = "alien",
-            forbiddenWords = listOf("space", "ufo", "planet", "mars", "extraterrestrial")
-        ),
-        PersonaConfig(
             targetWord = "gold",
             forbiddenWords = listOf("money", "treasure", "yellow", "coin", "rich")
         ),
         PersonaConfig(
             targetWord = "ghost",
             forbiddenWords = listOf("haunted", "dead", "spirit", "spooky", "halloween")
-        ),
-        PersonaConfig(
-            targetWord = "freeze",
-            forbiddenWords = listOf("cold", "ice", "winter", "stop", "snow")
         ),
         PersonaConfig(
             targetWord = "explosion",
@@ -135,28 +125,8 @@ object MockDataProvider {
             forbiddenWords = listOf("traitor", "stab", "back", "friend", "trust")
         ),
         PersonaConfig(
-            targetWord = "traffic",
-            forbiddenWords = listOf("cars", "road", "drive", "street", "stuck")
-        ),
-        PersonaConfig(
-            targetWord = "virus",
-            forbiddenWords = listOf("computer", "sick", "bug", "software", "hacker")
-        ),
-        PersonaConfig(
-            targetWord = "rescue",
-            forbiddenWords = listOf("help", "save", "hero", "danger", "trap")
-        ),
-        PersonaConfig(
             targetWord = "monster",
             forbiddenWords = listOf("scary", "beast", "creature", "hide", "under")
-        ),
-        PersonaConfig(
-            targetWord = "prison",
-            forbiddenWords = listOf("jail", "cell", "bars", "escape", "cops")
-        ),
-        PersonaConfig(
-            targetWord = "mirror",
-            forbiddenWords = listOf("glass", "look", "reflection", "see", "face")
         ),
         PersonaConfig(
             targetWord = "alarm",
@@ -167,8 +137,7 @@ object MockDataProvider {
     private val MOCK_CIPHER_CHUNKS = listOf(
         CipherChunk(id = 1, textValue = "HX7Q", isLocked = true),
         CipherChunk(id = 2, textValue = "7312", isLocked = true),
-        CipherChunk(id = 3, textValue = "TIDE", isLocked = true),
-        CipherChunk(id = 4, textValue = "WRIT", isLocked = true),
+        CipherChunk(id = 3, textValue = "WRIT", isLocked = true),
     )
 
     // ===================== Additional Test Scenarios =====================

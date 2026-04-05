@@ -6,14 +6,14 @@ import com.bitbenders.theentity.data.round1.WordPuzzleEntry
 import com.bitbenders.theentity.data.round2.RoundTwoCatalog
 import com.bitbenders.theentity.domain.repository.ArmorIqResult
 import com.bitbenders.theentity.domain.repository.GamePackage
+import com.bitbenders.theentity.domain.repository.GameTimerState
 import com.bitbenders.theentity.domain.repository.HealthStatus
 import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
 import com.bitbenders.theentity.domain.repository.IncidentLog
 import com.bitbenders.theentity.domain.repository.Round1Data
 import com.bitbenders.theentity.domain.repository.RoundOneSelection
 import com.bitbenders.theentity.domain.repository.Round2Data
-import com.bitbenders.theentity.domain.repository.Round3Data
-import com.bitbenders.theentity.domain.repository.Round4NativeBriefData
+import com.bitbenders.theentity.domain.repository.Round3NativeBriefData
 import com.bitbenders.theentity.domain.repository.RoomSession
 import com.bitbenders.theentity.domain.repository.SpeechCue
 import com.bitbenders.theentity.domain.repository.TerminalValidation
@@ -89,6 +89,23 @@ class EntityBackendRepositoryImpl @Inject constructor(
             targetWord = puzzle.targetWord,
             forbiddenWords = puzzle.forbiddenWords,
         )
+    }
+
+    override suspend fun queryGameTimerState(roomId: String): GameTimerState? {
+        return withContext(Dispatchers.IO) {
+            val gameId = runCatching { ensureGameId(roomId) }.getOrNull() ?: return@withContext null
+            val row = fetchLatestGameStateRow(gameId) ?: return@withContext null
+
+            val startedAt = row.readLong("timer_started_at_ms")
+            val deadlineAt = row.readLong("timer_deadline_at_ms")
+            val isDisqualified = row.readBoolean("is_game_disqualified") ?: false
+
+            GameTimerState(
+                timerStartedAtMs = startedAt,
+                timerDeadlineAtMs = deadlineAt,
+                isGameDisqualified = isDisqualified,
+            )
+        }
     }
 
     override suspend fun initiateRoom(seedLabel: String): RoomSession {
@@ -340,13 +357,7 @@ class EntityBackendRepositoryImpl @Inject constructor(
                 incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),
                 subjectId = RoundTwoCatalog.questionOneCode,
             ),
-            round3 = Round3Data(
-                theme = theme,
-                cipherText = "N/A",
-                decodingRule = "Round 3 reducer not integrated yet.",
-                answer = "N/A",
-            ),
-            round4NativeBrief = Round4NativeBriefData(
+            round3NativeBrief = Round3NativeBriefData(
                 homophones = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE"),
                 calibrationKey = "C7",
                 correctWord = "WRITE",

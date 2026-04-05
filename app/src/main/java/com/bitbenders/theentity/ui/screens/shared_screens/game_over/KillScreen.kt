@@ -28,6 +28,7 @@ import com.bitbenders.theentity.ui.theme.EntityTypography
 @Composable
 fun KillScreen(
     viewModel: KillScreenViewModel,
+    onTimeout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -42,6 +43,8 @@ fun KillScreen(
     LaunchedEffect(uiState.isComplete) {
         if (uiState.isComplete) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            kotlinx.coroutines.delay(5000)
+            onTimeout()
         }
     }
 

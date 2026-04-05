@@ -33,6 +33,7 @@ private val DimGreen = Color(0xFF1A7A0A)
 @Composable
 fun VictoryScreen(
     viewModel: VictoryScreenViewModel,
+    onTimeout: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
@@ -41,6 +42,8 @@ fun VictoryScreen(
     LaunchedEffect(uiState.phase) {
         if (uiState.phase == VictoryPhase.Complete) {
             haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+            kotlinx.coroutines.delay(5000)
+            onTimeout()
         }
     }
 

@@ -41,25 +41,46 @@ fun EntityNavGraph() {
                 )
             }
 
-            entry<Screen.P1TerminalRoute> {
+            entry<Screen.P1TerminalRoute> { route ->
                 val viewModel: P1TerminalViewModel = hiltViewModel()
-                // Assume we can implement logic to forward to 'kill_screen' using a LaunchedEffect watching P1TerminalViewModel states
-                P1TerminalScreen(viewModel = viewModel)
+                androidx.compose.runtime.LaunchedEffect(route.roomCode) {
+                    viewModel.setRoomCode(route.roomCode)
+                }
+                P1TerminalScreen(
+                    viewModel = viewModel,
+                    onNavigateToVictory = { backstack.add(Screen.VictoryScreenRoute) },
+                    onNavigateToDefeat = { backstack.add(Screen.KillScreenRoute) },
+                )
             }
 
-            entry<Screen.P2DashboardRoute> {
+            entry<Screen.P2DashboardRoute> { route ->
                 val viewModel: P2DashboardViewModel = hiltViewModel()
+                androidx.compose.runtime.LaunchedEffect(route.roomCode) {
+                    viewModel.setRoomCode(route.roomCode)
+                }
                 P2DashboardScreen(viewModel = viewModel)
             }
 
             entry<Screen.KillScreenRoute> {
                 val viewModel: KillScreenViewModel = hiltViewModel()
-                KillScreen(viewModel = viewModel)
+                KillScreen(
+                    viewModel = viewModel,
+                    onTimeout = { 
+                        backstack.clear()
+                        backstack.add(Screen.LobbyRoute) 
+                    }
+                )
             }
 
             entry<Screen.VictoryScreenRoute> {
                 val viewModel: VictoryScreenViewModel = hiltViewModel()
-                VictoryScreen(viewModel = viewModel)
+                VictoryScreen(
+                    viewModel = viewModel,
+                    onTimeout = { 
+                        backstack.clear()
+                        backstack.add(Screen.LobbyRoute) 
+                    }
+                )
             }
         }
     )

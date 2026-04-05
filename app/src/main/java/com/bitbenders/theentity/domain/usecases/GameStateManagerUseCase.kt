@@ -40,7 +40,7 @@ class GameStateManagerUseCase @Inject constructor(
         ) { _, strikeState ->
             GameProgress(
                 ciphersCollected = 0, // Will be tracked elsewhere
-                totalCiphers = 4,
+                totalCiphers = 3,
                 strikeCount = strikeState.currentStrikes,
                 maxStrikes = strikeState.maxStrikes,
             )

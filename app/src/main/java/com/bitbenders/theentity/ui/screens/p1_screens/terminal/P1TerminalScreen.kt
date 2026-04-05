@@ -13,12 +13,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.bitbenders.theentity.ui.components.RetroTerminalKeyboard
 import com.bitbenders.theentity.ui.components.screenShake
 import com.bitbenders.theentity.ui.components.staticNoise
@@ -31,11 +35,21 @@ import com.bitbenders.theentity.ui.theme.EntityRed
 @Composable
 fun P1TerminalScreen(
     viewModel: P1TerminalViewModel,
+    onNavigateToVictory: () -> Unit = {},
+    onNavigateToDefeat: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val haptic = LocalHapticFeedback.current
     val listState = rememberLazyListState()
+
+    // Navigate to victory/defeat screens
+    LaunchedEffect(uiState.isVictory) {
+        if (uiState.isVictory) onNavigateToVictory()
+    }
+    LaunchedEffect(uiState.showKillScreen) {
+        if (uiState.showKillScreen) onNavigateToDefeat()
+    }
 
     // Haptic feedback on shake
     LaunchedEffect(uiState.isShaking) {
@@ -51,6 +65,68 @@ fun P1TerminalScreen(
         }
     }
 
+    // ═══════ WAITING FOR OPERATOR ═══════
+    if (uiState.isWaitingForOperator) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(EntityBlack)
+                .staticNoise(0.3f)
+                .crtTerminalEffect()
+                .padding(32.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "ROOM CODE",
+                color = EntityGreen.copy(alpha = 0.6f),
+                style = MaterialTheme.typography.titleLarge
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = uiState.roomId,
+                color = EntityRed,
+                style = MaterialTheme.typography.displayLarge.copy(
+                    letterSpacing = 8.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+            var dots by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
+            LaunchedEffect(Unit) {
+                while (true) {
+                    dots = when (dots.length) {
+                        0 -> "."
+                        1 -> ".."
+                        2 -> "..."
+                        else -> ""
+                    }
+                    kotlinx.coroutines.delay(500)
+                }
+            }
+            Text(
+                text = "WAITING FOR OPERATOR$dots",
+                color = EntityGreen,
+                style = MaterialTheme.typography.headlineMedium
+            )
+        }
+        return
+    }
+
+    // ═══════ ROUND 3: FULL-SCREEN CALIBRATION MATRIX ═══════
+    if (uiState.roundNumber == 3 && uiState.bossOptions.isNotEmpty()) {
+        CalibrationMatrixScreen(
+            uiState = uiState,
+            onOptionTouched = { optionId ->
+                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                viewModel.onBossOptionTouched(optionId, committed = true)
+            },
+            modifier = modifier
+        )
+        return
+    }
+
+    // ═══════ ROUNDS 1–2: NORMAL TERMINAL ═══════
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -69,17 +145,12 @@ fun P1TerminalScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Timer (bigger and red)
             Text(
                 text = "T-${uiState.timerString}",
                 color = EntityRed,
                 style = MaterialTheme.typography.headlineMedium
             )
-
-            // Spacer to push strikes to the right while keeping header balanced
             Spacer(modifier = Modifier.weight(1f))
-
-            // Strike icons (placeholder bullets we can later replace with animated icons)
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -97,7 +168,7 @@ fun P1TerminalScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Cipher slots row – four boxes fill the row, no "SLOTS" label
+        // Cipher slots row
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -128,7 +199,6 @@ fun P1TerminalScreen(
         Spacer(modifier = Modifier.height(12.dp))
 
         // ═══════ CHAT DISPLAY ═══════
-        // Terminal view for chat history with typewriter effect
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -143,7 +213,6 @@ fun P1TerminalScreen(
             ) {
                 items(uiState.chatHistory) { message ->
                     val (displayMessage, explicitColor) = parseTerminalColorMarkup(message)
-                    // Color different message types
                     val textColor = explicitColor ?: when {
                         displayMessage.startsWith("ERR:") -> EntityRed
                         displayMessage.startsWith("[ENTITY_ZERO]:") -> EntityGreen
@@ -174,8 +243,6 @@ fun P1TerminalScreen(
                                 color = EntityGreen,
                                 style = MaterialTheme.typography.bodyMedium
                             )
-
-                            // Blinking cursor during typewriter effect
                             if (uiState.showTypingCursor) {
                                 Text(
                                     text = "_",
@@ -186,7 +253,6 @@ fun P1TerminalScreen(
                         }
                     }
                 } else {
-                    // Show blinking cursor prompt after last message when not typing
                     item {
                         Row(
                             modifier = Modifier.padding(vertical = 2.dp),
@@ -198,8 +264,6 @@ fun P1TerminalScreen(
                                 color = EntityGreen.copy(alpha = 0.6f),
                                 style = MaterialTheme.typography.bodyMedium
                             )
-
-                            // Blinking cursor below last message
                             if (uiState.showInputCursor) {
                                 Text(
                                     text = "_",
@@ -215,61 +279,8 @@ fun P1TerminalScreen(
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Removed round description panel above the keyboard – we go straight to keyboard/boss grid
-        // Round instruction + optional boss grid (Round 4)
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .border(1.dp, EntityBorder)
-                .padding(12.dp)
-        ) {
-            if (uiState.roundNumber == 4 && uiState.bossOptions.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-
-                // 3 x 2 grid of confusing homophones
-                val rows = uiState.bossOptions.chunked(3)
-                rows.forEach { row ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        row.forEach { option ->
-                            val isSelected = uiState.selectedBossOptionId == option.id
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .border(1.dp, if (isSelected) EntityRed else EntityGreen)
-                                    .background(EntityBlack)
-                                    .clickable {
-                                        // First tap = preview / glitch, second (commit) expected from UI logic
-                                        // For now we treat every tap as committed selection
-                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                        viewModel.onBossOptionTouched(option.id, committed = true)
-                                    }
-                                    .padding(vertical = 12.dp, horizontal = 4.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = option.text,
-                                    color = if (isSelected) EntityRed else EntityGreen,
-                                    style = MaterialTheme.typography.titleLarge
-                                )
-                            }
-                        }
-                        // Pad remaining cells in short rows
-                        repeat(3 - row.size) {
-                            Spacer(modifier = Modifier.weight(1f))
-                        }
-                    }
-                    Spacer(modifier = Modifier.height(8.dp))
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         // ═══════ INPUT FIELD / RETRO KEYBOARD ═══════
-        if (uiState.roundNumber < 4 && !uiState.showKillScreen && !uiState.isVictory) {
+        if (uiState.roundNumber < 3 && !uiState.showKillScreen && !uiState.isVictory) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -299,6 +310,167 @@ fun P1TerminalScreen(
     }
 }
 
+// ═══════ FULL-SCREEN CALIBRATION MATRIX ═══════
+
+@Composable
+private fun CalibrationMatrixScreen(
+    uiState: P1TerminalUiState,
+    onOptionTouched: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(EntityBlack)
+            .screenShake(uiState.isShaking)
+            .staticNoise(uiState.currentStaticIntensity)
+            .crtTerminalEffect()
+            .padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        // ── Header: Timer + Strikes ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, EntityBorder)
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "T-${uiState.timerString}",
+                color = EntityRed,
+                style = MaterialTheme.typography.headlineMedium
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                repeat(uiState.maxStrikes) { index ->
+                    val active = index < uiState.currentStrikes
+                    Text(
+                        text = if (active) "●" else "○",
+                        color = if (active) EntityRed else EntityGreen,
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        // ── Title ──
+        Text(
+            text = "HOSTILE LEXICAL\nCALIBRATION",
+            color = EntityGreen,
+            style = MaterialTheme.typography.headlineLarge.copy(
+                fontWeight = FontWeight.Bold,
+                lineHeight = 36.sp,
+                letterSpacing = 4.sp,
+            ),
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        // ── Calibration Key ──
+        Text(
+            text = "KEY: ${uiState.calibrationKey}",
+            color = EntityRed,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 6.sp,
+            ),
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "SELECT THE CORRECT WORD",
+            color = EntityGreen.copy(alpha = 0.6f),
+            style = MaterialTheme.typography.bodyMedium.copy(
+                letterSpacing = 2.sp
+            ),
+            textAlign = TextAlign.Center
+        )
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // ── 3×2 Homophone Grid ──
+        val rows = uiState.bossOptions.chunked(3)
+        rows.forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                row.forEach { option ->
+                    val isSelected = uiState.selectedBossOptionId == option.id
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .aspectRatio(1.6f)
+                            .border(
+                                width = if (isSelected) 2.dp else 1.dp,
+                                color = if (isSelected) EntityRed else EntityGreen
+                            )
+                            .background(
+                                if (isSelected) EntityRed.copy(alpha = 0.1f) else Color.Transparent
+                            )
+                            .clickable { onOptionTouched(option.id) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = option.text,
+                            color = if (isSelected) EntityRed else EntityGreen,
+                            style = MaterialTheme.typography.headlineMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = 2.sp,
+                            ),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+                // Pad remaining cells in short rows
+                repeat(3 - row.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        // ── Cipher slots at bottom ──
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .border(1.dp, EntityBorder)
+                .padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            uiState.cipherSlots.forEach { chunk ->
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(40.dp)
+                        .border(1.dp, EntityGreen)
+                        .background(EntityBlack)
+                        .padding(4.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "[ ${chunk?.textValue ?: "_"} ]",
+                        color = if (chunk != null) EntityGreen else EntityGreen.copy(alpha = 0.5f),
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                }
+            }
+        }
+    }
+}
+
 private fun parseTerminalColorMarkup(message: String): Pair<String, Color?> {
     val match = Regex("^\\[COLOR:([^\\]]+)]\\s*(.+)$", RegexOption.IGNORE_CASE).find(message)
         ?: return message to null
@@ -315,4 +487,3 @@ private fun resolveColorToken(token: String): Color? {
         else -> runCatching { Color(android.graphics.Color.parseColor(token)) }.getOrNull()
     }
 }
-

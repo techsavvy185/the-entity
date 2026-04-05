@@ -58,27 +58,5 @@ fun P2ManualScreen(
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(text = rule.details, color = EntityGreen, style = MaterialTheme.typography.bodyMedium)
                 }
-            }
-
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text("TABLE 2: DATA STRUCTURE INDEX", color = EntityGreen, style = MaterialTheme.typography.titleLarge)
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-
-            items(uiState.cipherRules) { rule ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, EntityBorder)
-                        .padding(12.dp)
-                ) {
-                    Text(text = "THEME: ${rule.title}", color = EntityGreen, style = MaterialTheme.typography.bodyLarge)
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(text = "DECODE: ${rule.details}", color = EntityGreen, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-    }
-}
+            }        }  }}
 

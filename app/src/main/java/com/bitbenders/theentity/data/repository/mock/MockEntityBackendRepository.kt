@@ -5,14 +5,14 @@ import com.bitbenders.theentity.data.round1.WordPuzzleEntry
 import com.bitbenders.theentity.data.round2.RoundTwoCatalog
 import com.bitbenders.theentity.domain.repository.ArmorIqResult
 import com.bitbenders.theentity.domain.repository.GamePackage
+import com.bitbenders.theentity.domain.repository.GameTimerState
 import com.bitbenders.theentity.domain.repository.HealthStatus
 import com.bitbenders.theentity.domain.repository.IEntityBackendRepository
 import com.bitbenders.theentity.domain.repository.IncidentLog
 import com.bitbenders.theentity.domain.repository.Round1Data
 import com.bitbenders.theentity.domain.repository.RoundOneSelection
 import com.bitbenders.theentity.domain.repository.Round2Data
-import com.bitbenders.theentity.domain.repository.Round3Data
-import com.bitbenders.theentity.domain.repository.Round4NativeBriefData
+import com.bitbenders.theentity.domain.repository.Round3NativeBriefData
 import com.bitbenders.theentity.domain.repository.RoomSession
 import com.bitbenders.theentity.domain.repository.SpeechCue
 import com.bitbenders.theentity.domain.repository.TerminalValidation
@@ -61,6 +61,16 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
             persona = persona,
             targetWord = puzzle.targetWord,
             forbiddenWords = puzzle.forbiddenWords,
+        )
+    }
+
+    override suspend fun queryGameTimerState(roomId: String): GameTimerState? {
+        val now = System.currentTimeMillis()
+        val deadline = now + (5 * 60 * 1000) // 5 minutes
+        return GameTimerState(
+            timerStartedAtMs = now,
+            timerDeadlineAtMs = deadline,
+            isGameDisqualified = false,
         )
     }
 
@@ -120,13 +130,7 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
                 incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),
                 subjectId = RoundTwoCatalog.questionOneCode
             ),
-            round3 = Round3Data(
-                theme = "Void Patterns",
-                cipherText = "VYMD",
-                decodingRule = "Caesar cipher, shift -1",
-                answer = "VOID"
-            ),
-            round4NativeBrief = Round4NativeBriefData(
+            round3NativeBrief = Round3NativeBriefData(
                 homophones = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE"),
                 calibrationKey = "C7",
                 correctWord = "WRITE"

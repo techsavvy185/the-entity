@@ -23,7 +23,7 @@ data class P1TerminalUiState(
     val maxStrikes: Int = 3,
     val chatHistory: List<String> = emptyList(),
     val currentPersona: String = "BOOTING...",
-    val cipherSlots: List<CipherChunk?> = listOf(null, null, null, null),
+    val cipherSlots: List<CipherChunk?> = listOf(null, null, null),
     val roundNumber: Int = 1,
     val roundInstruction: String = "Initializing extraction protocol...",
     val roundPhase: RoundPhase = RoundPhase.BOOT,
@@ -41,6 +41,8 @@ data class P1TerminalUiState(
     val showTypingCursor: Boolean = false,  // Blinking cursor visibility
     val isTypewriting: Boolean = false,  // Whether we're currently in typewriter mode
     // Input prompt cursor
-    val showInputCursor: Boolean = true  // Blinking cursor for input prompt
+    val showInputCursor: Boolean = true,  // Blinking cursor for input prompt
+    // Wait for P2
+    val isWaitingForOperator: Boolean = false,
+    val roomId: String = "",
 )
-
