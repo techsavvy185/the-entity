@@ -361,11 +361,9 @@ private fun CalibrationMatrixScreen(
 
         // ── Title ──
         Text(
-            text = "HOSTILE LEXICAL\nCALIBRATION",
-            color = EntityGreen,
-            style = MaterialTheme.typography.headlineLarge.copy(
-                fontWeight = FontWeight.Bold,
-                lineHeight = 36.sp,
+            text = "CALIBRATION",
+            color = EntityGreen.copy(alpha = 0.6f),
+            style = MaterialTheme.typography.titleLarge.copy(
                 letterSpacing = 4.sp,
             ),
             textAlign = TextAlign.Center
@@ -373,23 +371,23 @@ private fun CalibrationMatrixScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // ── Calibration Key ──
+        // ── Matrix Heading (displayEntry word) ──
         Text(
-            text = "KEY: ${uiState.calibrationKey}",
-            color = EntityRed,
-            style = MaterialTheme.typography.titleLarge.copy(
+            text = uiState.calibrationKey,
+            color = EntityGreen,
+            style = MaterialTheme.typography.displayLarge.copy(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 6.sp,
             ),
             textAlign = TextAlign.Center
         )
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "SELECT THE CORRECT WORD",
-            color = EntityGreen.copy(alpha = 0.6f),
-            style = MaterialTheme.typography.bodyMedium.copy(
+            text = "AWAITING SYNCHRONIZATION",
+            color = EntityRed,
+            style = MaterialTheme.typography.bodyLarge.copy(
                 letterSpacing = 2.sp
             ),
             textAlign = TextAlign.Center
@@ -397,8 +395,8 @@ private fun CalibrationMatrixScreen(
 
         Spacer(modifier = Modifier.weight(1f))
 
-        // ── 3×2 Homophone Grid ──
-        val rows = uiState.bossOptions.chunked(3)
+        // ── 3×2 Grid (3 rows, 2 columns) ──
+        val rows = uiState.bossOptions.chunked(2)
         rows.forEach { row ->
             Row(
                 modifier = Modifier.fillMaxWidth(),

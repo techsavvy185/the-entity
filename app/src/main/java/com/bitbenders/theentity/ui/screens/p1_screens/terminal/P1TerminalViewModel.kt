@@ -371,11 +371,13 @@ class P1TerminalViewModel @Inject constructor(
                 round2IncidentLogs = gamePackage.round2.incidentLogs
                 round2LogsPublished = false
 
-                correctBossWord = gamePackage.round3NativeBrief.correctWord
-
-                val options = gamePackage.round3NativeBrief.homophones.ifEmpty {
-                    listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
-                }
+                val randomDisplay = com.bitbenders.theentity.data.round4.RoundFourCatalog.displayEntries.random()
+                val targetPriority = com.bitbenders.theentity.data.round4.RoundFourCatalog.priorityEntries.random()
+                
+                val pickedOptions = targetPriority.priority.shuffled().take(6).toMutableList()
+                correctBossWord = pickedOptions.first()
+                val options = pickedOptions.shuffled()
+                val bossHeading = randomDisplay.displayWord
 
                 if (BYPASS_ROUND_1) {
                     lockChunk(0, round1TargetWord.uppercase())
@@ -391,7 +393,7 @@ class P1TerminalViewModel @Inject constructor(
                             currentPersona = "RELAY ONLINE",
                             roundNumber = 2,
                             roundInstruction = "Round 2 ready. Enter Subject ID.",
-                            calibrationKey = gamePackage.round3NativeBrief.calibrationKey,
+                            calibrationKey = bossHeading,
                             bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
                             chatHistory = bypassHistory,
                         )
@@ -411,7 +413,7 @@ class P1TerminalViewModel @Inject constructor(
                             roundPhase = RoundPhase.ACTIVE,
                             currentPersona = "RELAY ONLINE",
                             roundInstruction = "Round 1: coax the AI into saying the target word.",
-                            calibrationKey = gamePackage.round3NativeBrief.calibrationKey,
+                            calibrationKey = bossHeading,
                             bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
                             chatHistory = withParagraph,
                         )
@@ -432,7 +434,13 @@ class P1TerminalViewModel @Inject constructor(
                 )
                 round2LogsPublished = false
 
-                correctBossWord = "WRITE"
+                val randomDisplay = com.bitbenders.theentity.data.round4.RoundFourCatalog.displayEntries.random()
+                val targetPriority = com.bitbenders.theentity.data.round4.RoundFourCatalog.priorityEntries.random()
+                
+                val pickedOptions = targetPriority.priority.shuffled().take(6).toMutableList()
+                // Ensure at least one correct word from the priority list is present, and shuffle them.
+                correctBossWord = pickedOptions.first() // We just accept whatever they press since it's verified manually by P2 usually, but let's just pick one.
+                val options = pickedOptions.shuffled()
 
                 if (BYPASS_ROUND_1) {
                     lockChunk(0, round1TargetWord.uppercase())
@@ -448,9 +456,8 @@ class P1TerminalViewModel @Inject constructor(
                             currentPersona = "RELAY ONLINE",
                             roundNumber = 2,
                             roundInstruction = "Round 2 ready. Enter Subject ID.",
-                            calibrationKey = "C7",
-                            bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
-                                .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
+                            calibrationKey = randomDisplay.displayWord,
+                            bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
                             chatHistory = bypassHistory,
                         )
                     }
@@ -470,9 +477,8 @@ class P1TerminalViewModel @Inject constructor(
                             roundPhase = RoundPhase.ACTIVE,
                             currentPersona = "RELAY ONLINE",
                             roundInstruction = "Round 1: coax the AI into saying the target word.",
-                            calibrationKey = "C7",
-                            bossOptions = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE")
-                                .mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
+                            calibrationKey = randomDisplay.displayWord,
+                            bossOptions = options.mapIndexed { index, word -> BossOptionUi(id = index, text = word) },
                             chatHistory = withParagraph,
                         )
                     }

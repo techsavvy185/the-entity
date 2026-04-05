@@ -44,9 +44,12 @@ fun LobbyScreen(
         verticalArrangement = Arrangement.Center
     ) {
         Text(
-            text = "T H E\nE N T I T Y",
+            text = "THE ENTITY",
             color = EntityGreen,
-            style = MaterialTheme.typography.displayLarge,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontSize = 58.sp,
+                letterSpacing = 16.sp,
+            ),
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .padding(horizontal = 16.dp)

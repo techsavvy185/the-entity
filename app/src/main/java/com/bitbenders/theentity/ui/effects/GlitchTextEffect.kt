@@ -35,15 +35,18 @@ const val GLITCH_TEXT_SHADER = """
         
         float randVal = random(float2(ySegment, timeFrame));
         
-        // Trigger a glitch heavily on roughly 15% of segments
-        float isGlitch = step(0.85, randVal); 
+        // Trigger a glitch heavily on roughly 4% of segments
+        float isGlitch = step(0.96, randVal); 
         
-        // Calculate the horizontal tearing offset
-        float glitchOffset = (random(float2(ySegment, time)) - 0.5) * 0.2 * isGlitch;
+        // Calculate the horizontal tearing offset (subtle)
+        float glitchOffset = (random(float2(ySegment, time)) - 0.5) * 0.05 * isGlitch;
+
+        // Continuous small noise for the green channel to make the text feel unstable/noisy (subtle)
+        float greenJitter = (random(float2(uv.y * 50.0, time)) - 0.5) * 0.008;
 
         // Split RGB channels
         float2 rCoord = fragCoord + float2(glitchOffset * size.x, 0.0);
-        float2 gCoord = fragCoord;
+        float2 gCoord = fragCoord + float2((glitchOffset * 0.1 + greenJitter) * size.x, 0.0);
         float2 bCoord = fragCoord - float2(glitchOffset * 0.5 * size.x, 0.0);
 
         half r = composable.eval(rCoord).r;
@@ -57,7 +60,7 @@ const val GLITCH_TEXT_SHADER = """
         half maxAlpha = max(max(a_r, a_g), a_b);
 
         // Add some localized static snow inside the glitched block
-        float staticNoise = (random(uv * time) - 0.5) * 1.5 * isGlitch * float(maxAlpha);
+        float staticNoise = (random(uv * time) - 0.5) * 0.6 * isGlitch * float(maxAlpha);
         
         float finalR = clamp(float(r) + staticNoise, 0.0, 1.0);
         float finalG = clamp(float(g) + staticNoise, 0.0, 1.0);
