@@ -116,6 +116,8 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
         val persona = selectedPersona ?: RoundOneCatalog.selectPersona(activeRoomId)
         val puzzle = selectedPuzzle ?: RoundOneCatalog.selectPuzzle(activeRoomId)
 
+        val r2Entry = RoundTwoCatalog.getRandomEntry(activeRoomId)
+
         return GamePackage(
             gameTitle = "The Entity Protocol",
             settingSummary = "A classified research facility where an anomalous entity is contained.",
@@ -127,8 +129,8 @@ class MockEntityBackendRepository @Inject constructor() : IEntityBackendReposito
                 dialogue = "A tense monologue bleeds through the channel. The voice carries distinct era-specific cues."
             ),
             round2 = Round2Data(
-                incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),
-                subjectId = RoundTwoCatalog.questionOneCode
+                incidentLogs = listOf(r2Entry.log),
+                subjectId = r2Entry.subjectId
             ),
             round3NativeBrief = Round3NativeBriefData(
                 homophones = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE"),
