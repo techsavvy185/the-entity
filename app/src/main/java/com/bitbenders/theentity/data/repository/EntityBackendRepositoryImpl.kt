@@ -347,6 +347,8 @@ class EntityBackendRepositoryImpl @Inject constructor(
             dialogue = sanitizeRoundOneDialogue(dialogueSource, localPersona),
         )
 
+        val r2Entry = RoundTwoCatalog.getRandomEntry(roomId)
+
         // Placeholder data for rounds 2-4 until those reducers are integrated.
         return GamePackage(
             gameTitle = "The Entity",
@@ -354,8 +356,8 @@ class EntityBackendRepositoryImpl @Inject constructor(
             sharedManualIntro = objective,
             round1 = round1,
             round2 = Round2Data(
-                incidentLogs = listOf(RoundTwoCatalog.questionOneIncidentLog),
-                subjectId = RoundTwoCatalog.questionOneCode,
+                incidentLogs = listOf(r2Entry.log),
+                subjectId = r2Entry.subjectId,
             ),
             round3NativeBrief = Round3NativeBriefData(
                 homophones = listOf("WAIT", "WEIGHT", "RIGHT", "WRITE", "HOLE", "WHOLE"),

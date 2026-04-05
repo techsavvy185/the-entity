@@ -7,6 +7,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -61,8 +62,9 @@ fun LobbyScreen(
             border = BorderStroke(2.dp, EntityBorder)
         ) {
             Text(
-                text = "JOIN AS TRAPPED (P1)",
-                style = MaterialTheme.typography.titleLarge
+                text = "CREATE NEW ROOM (P1)",
+                style = MaterialTheme.typography.titleLarge,
+                letterSpacing = 2.sp
             )
         }
 
@@ -81,8 +83,9 @@ fun LobbyScreen(
             border = BorderStroke(2.dp, EntityBorder)
         ) {
             Text(
-                text = "JOIN AS OPERATOR (P2)",
-                style = MaterialTheme.typography.titleLarge
+                text = "JOIN EXISTING ROOM (P2)",
+                style = MaterialTheme.typography.titleLarge,
+                letterSpacing = 2.sp
             )
         }
 
@@ -102,7 +105,10 @@ fun LobbyScreen(
                     contentColor = EntityBlack,
                 ),
             ) {
-                Text(text = "CREATE ROOM + ENTER AS P1", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = "ENTER TERMINAL", 
+                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp)
+                )
             }
         }
 
@@ -110,10 +116,20 @@ fun LobbyScreen(
             Spacer(modifier = Modifier.height(28.dp))
             OutlinedTextField(
                 value = uiState.joinCodeInput,
-                onValueChange = viewModel::onJoinCodeChanged,
-                label = { Text("Enter Room Code", style = MaterialTheme.typography.labelLarge) },
+                onValueChange = { viewModel.onJoinCodeChanged(it.uppercase()) },
+                label = { Text("ENTER ROOM CODE", style = MaterialTheme.typography.labelLarge) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii),
                 singleLine = true,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = EntityGreen,
+                    unfocusedBorderColor = EntityBorder,
+                    focusedLabelColor = EntityGreen,
+                    unfocusedLabelColor = EntityGreen.copy(alpha = 0.6f),
+                    focusedTextColor = EntityGreen,
+                    unfocusedTextColor = EntityGreen,
+                    cursorColor = EntityGreen
+                ),
+                textStyle = MaterialTheme.typography.titleLarge.copy(letterSpacing = 4.sp, textAlign = TextAlign.Center)
             )
             Spacer(modifier = Modifier.height(12.dp))
             Button(
@@ -128,7 +144,10 @@ fun LobbyScreen(
                     contentColor = EntityBlack,
                 ),
             ) {
-                Text(text = "JOIN ROOM AS P2", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = "CONNECT AS OPERATOR", 
+                    style = MaterialTheme.typography.labelLarge.copy(letterSpacing = 2.sp)
+                )
             }
         }
 
