@@ -18,10 +18,13 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.bitbenders.theentity.ui.theme.EntityBlack
 import com.bitbenders.theentity.ui.theme.EntityBorder
 import com.bitbenders.theentity.ui.theme.EntityGreen
 import com.bitbenders.theentity.ui.theme.EntityRed
+
+import com.bitbenders.theentity.ui.effects.glitchTextEffectIfSupported
 
 @Composable
 fun LobbyScreen(
@@ -44,7 +47,10 @@ fun LobbyScreen(
             text = "T H E\nE N T I T Y",
             color = EntityGreen,
             style = MaterialTheme.typography.displayLarge,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .padding(horizontal = 16.dp)
+                .glitchTextEffectIfSupported()
         )
 
         Spacer(modifier = Modifier.height(64.dp))
@@ -62,7 +68,7 @@ fun LobbyScreen(
             border = BorderStroke(2.dp, EntityBorder)
         ) {
             Text(
-                text = "CREATE NEW ROOM (P1)",
+                text = "CREATE ROOM (P1)",
                 style = MaterialTheme.typography.titleLarge,
                 letterSpacing = 2.sp
             )
@@ -83,7 +89,7 @@ fun LobbyScreen(
             border = BorderStroke(2.dp, EntityBorder)
         ) {
             Text(
-                text = "JOIN EXISTING ROOM (P2)",
+                text = "JOIN ROOM (P2)",
                 style = MaterialTheme.typography.titleLarge,
                 letterSpacing = 2.sp
             )
