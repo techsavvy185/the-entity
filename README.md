@@ -47,7 +47,3 @@ This application was engineered entirely from scratch, bypassing traditional gam
 2. Player 1 selects "Create Room" and adopts the Trapped role.
 3. Player 2 selects "Join Room", enters the generated Room Code, and adopts the Operator role.
 4. The 5-minute timer begins immediately upon successful connection. Do not use the forbidden words.
-
-## License
-
-This project is licensed under the MIT License. See the LICENSE file for details.
