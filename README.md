@@ -4,6 +4,13 @@ The Entity is a 5-minute asymmetric cooperative horror game where two players mu
 
 One player is trapped with the AI on a retro terminal, while the other uses a tactical tablet and a procedural digital manual to guide them safely. Because the AI personas, incident logs, and puzzles are generated on the fly, every single match is completely unique.
 
+
+# Demo Video
+
+https://github.com/user-attachments/assets/8c986b56-41a4-402f-99c8-dfe0cb8be6d1
+
+(It makes sense when you take your time and read the manual. Pinky Promise.)
+
 ## Core Features
 
 * **Asymmetric Co-Op:** Two players work together to extract a 3-chunk cipher from a rogue AI before Player 1 is absorbed.
